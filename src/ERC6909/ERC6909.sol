@@ -41,7 +41,26 @@ abstract contract ERC6909 is IERC6909, IERC165 {
             allowance[msg.sender][spender][id] = amount;
 
             emit Approval(msg.sender, spender, id, amount);
+
+            return true;
         }
+
+        return false;
+    }
+
+    function approveAlways(address spender, uint256 id, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender][id] = amount;
+
+        emit Approval(msg.sender, spender, id, amount);
+    }
+
+    function approveOnDifferentValueEmitAlways(address spender, uint256 id, uint256 amount) external returns (bool) {
+        if (allowance[msg.sender][spender][id] != amount) {
+            allowance[msg.sender][spender][id] = amount;
+        }
+
+        emit Approval(msg.sender, spender, id, amount);
+
         return true;
     }
 

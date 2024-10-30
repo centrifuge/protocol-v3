@@ -1,0 +1,3 @@
+ERC6909ApproveBenchmark:testAlwaysApprove() (gas: 14617)
+ERC6909ApproveBenchmark:testApproveOnDifferentValueEmitAlways() (gas: 14581)
+ERC6909ApproveBenchmark:testConditionalApprove() (gas: 12302)
