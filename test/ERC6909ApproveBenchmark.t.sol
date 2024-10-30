@@ -34,4 +34,16 @@ contract ERC6909ApproveBenchmark is Test {
     function testApproveOnDifferentValueEmitAlways() public {
         token.approveOnDifferentValueEmitAlways(delegate, tokenId, 1);
     }
+
+    function testConditionalApproveWithDifferentValue() public {
+        token.approve(delegate, tokenId, 2);
+    }
+
+    function testAlwaysApproveWithDifferentValue() public {
+        token.approveAlways(delegate, tokenId, 2);
+    }
+
+    function testApproveOnDifferentValueEmitAlwaysWithDifferentValue() public {
+        token.approveOnDifferentValueEmitAlways(delegate, tokenId, 2);
+    }
 }
