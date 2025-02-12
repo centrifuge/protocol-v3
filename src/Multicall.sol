@@ -3,6 +3,8 @@ pragma solidity ^0.8.28;
 
 import {IMulticall} from "src/interfaces/IMulticall.sol";
 
+import "forge-std/Test.sol";
+
 contract Multicall is IMulticall {
     /// @dev Performs a generic multicall. It reverts the whole transaction if one call fails.
     function aggregate(Call[] calldata calls) external returns (bytes[] memory results) {
@@ -10,6 +12,7 @@ contract Multicall is IMulticall {
 
         for (uint32 i; i < calls.length; i++) {
             (bool success, bytes memory result) = calls[i].target.call(calls[i].data);
+
             // Forward the error happened in target.call().
             if (!success) {
                 assembly {
@@ -18,7 +21,10 @@ contract Multicall is IMulticall {
                     revert(add(result, 32), mload(result))
                 }
             }
-            results[i] = result;
+
+            console.logBytes(result);
+            results[i] = abi.decode(result, (bytes));
+            console.logBytes(results[0]);
         }
     }
 }

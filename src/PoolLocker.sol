@@ -38,7 +38,7 @@ abstract contract PoolLocker is IPoolLocker {
             for (uint256 i; i < calls.length; i++) {
                 wrapCalls[i] = IMulticall.Call(
                     address(callEscrow),
-                    abi.encodeWithSelector(callEscrow.call.selector, calls[i].target, calls[i].data)
+                    abi.encodeWithSelector(callEscrow.doCall.selector, calls[i].target, calls[i].data)
                 );
             }
 

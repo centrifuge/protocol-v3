@@ -6,5 +6,5 @@ interface ICallEscrow {
     /// @notice Perform the call passed by parameter.
     /// @param target contract where to perform the call
     /// @param data encoded selector + parameters of the call
-    function call(address target, bytes calldata data) external returns (bool success, bytes memory results);
+    function doCall(address target, bytes calldata data) external returns (bytes memory result);
 }
