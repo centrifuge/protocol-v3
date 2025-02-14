@@ -1,0 +1,3 @@
+forge-std/=../../lib/forge-std/src/
+misc/=../misc/src/
+common/=../common/src/
