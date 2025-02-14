@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 
-import {IAuth} from "src/misc/interfaces/IAuth.sol";
+import {IAuth} from "misc/interfaces/IAuth.sol";
 
 import {PoolId} from "src/types/PoolId.sol";
 import {AccountId, newAccountId} from "src/types/AccountId.sol";

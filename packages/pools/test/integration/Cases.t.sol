@@ -3,12 +3,12 @@ pragma solidity ^0.8.28;
 
 import "forge-std/Test.sol";
 
-import {D18, d18} from "src/misc/types/D18.sol";
-import {CastLib} from "src/misc/libraries/CastLib.sol";
-import {IMulticall} from "src/misc/interfaces/IMulticall.sol";
-import {IERC7726} from "src/misc/interfaces/IERC7726.sol";
+import {D18, d18} from "misc/types/D18.sol";
+import {CastLib} from "misc/libraries/CastLib.sol";
+import {IMulticall} from "misc/interfaces/IMulticall.sol";
+import {IERC7726} from "misc/interfaces/IERC7726.sol";
 
-import {MessageType} from "src/common/libraries/MessageLib.sol";
+import {MessageType} from "common/libraries/MessageLib.sol";
 
 import {AssetId, newAssetId} from "src/types/AssetId.sol";
 import {PoolId} from "src/types/PoolId.sol";
@@ -17,7 +17,7 @@ import {ShareClassId} from "src/types/ShareClassId.sol";
 import {AccountType} from "src/interfaces/IPoolManager.sol";
 import {previewShareClassId} from "src/SingleShareClass.sol";
 
-import {Deployer} from "script/pools/Deployer.s.sol";
+import {Deployer} from "script/Deployer.s.sol";
 
 import {MockVaults} from "test/mocks/MockVaults.sol";
 

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {Auth} from "src/misc/Auth.sol";
-import {D18, d18} from "src/misc/types/D18.sol";
-import {IERC7726} from "src/misc/interfaces/IERC7726.sol";
-import {MathLib} from "src/misc/libraries/MathLib.sol";
+import {Auth} from "misc/Auth.sol";
+import {D18, d18} from "misc/types/D18.sol";
+import {IERC7726} from "misc/interfaces/IERC7726.sol";
+import {MathLib} from "misc/libraries/MathLib.sol";
 
 import {IPoolRegistry} from "src/interfaces/IPoolRegistry.sol";
 import {IShareClassManager} from "src/interfaces/IShareClassManager.sol";

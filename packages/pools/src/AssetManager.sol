@@ -3,10 +3,10 @@ pragma solidity 0.8.28;
 
 import {IERC165} from "forge-std/interfaces/IERC165.sol";
 
-import {Auth} from "src/misc/Auth.sol";
-import {MathLib} from "src/misc/libraries/MathLib.sol";
-import {ERC6909Fungible} from "src/misc/ERC6909Fungible.sol";
-import {IERC6909MetadataExt} from "src/misc/interfaces/IERC6909.sol";
+import {Auth} from "misc/Auth.sol";
+import {MathLib} from "misc/libraries/MathLib.sol";
+import {ERC6909Fungible} from "misc/ERC6909Fungible.sol";
+import {IERC6909MetadataExt} from "misc/interfaces/IERC6909.sol";
 
 import {AssetId} from "src/types/AssetId.sol";
 import {IAssetManager} from "src/interfaces/IAssetManager.sol";

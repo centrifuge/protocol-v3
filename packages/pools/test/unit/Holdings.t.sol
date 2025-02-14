@@ -3,8 +3,8 @@ pragma solidity ^0.8.28;
 
 import "forge-std/Test.sol";
 
-import {IAuth} from "src/misc/interfaces/IAuth.sol";
-import {IERC7726} from "src/misc/interfaces/IERC7726.sol";
+import {IAuth} from "misc/interfaces/IAuth.sol";
+import {IERC7726} from "misc/interfaces/IERC7726.sol";
 
 import {PoolId} from "src/types/PoolId.sol";
 import {AssetId} from "src/types/AssetId.sol";

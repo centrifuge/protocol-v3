@@ -3,8 +3,8 @@ pragma solidity ^0.8.28;
 
 import "forge-std/Test.sol";
 
-import {IMulticall} from "src/misc/interfaces/IMulticall.sol";
-import {Multicall} from "src/misc/Multicall.sol";
+import {IMulticall} from "misc/interfaces/IMulticall.sol";
+import {Multicall} from "misc/Multicall.sol";
 
 import {PoolId} from "src/types/PoolId.sol";
 import {PoolLocker} from "src/PoolLocker.sol";

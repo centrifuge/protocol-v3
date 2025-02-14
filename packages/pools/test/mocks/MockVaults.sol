@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.28;
 
-import {CastLib} from "src/misc/libraries/CastLib.sol";
-import {BytesLib} from "src/misc/libraries/BytesLib.sol";
+import {CastLib} from "misc/libraries/CastLib.sol";
+import {BytesLib} from "misc/libraries/BytesLib.sol";
 
-import {MessageType} from "src/common/libraries/MessageLib.sol";
+import {MessageType} from "common/libraries/MessageLib.sol";
 
 import {AssetId} from "src/types/AssetId.sol";
 import {PoolId} from "src/types/PoolId.sol";

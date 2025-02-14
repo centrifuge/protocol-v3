@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {IERC6909Fungible, IERC6909MetadataExt} from "src/misc/interfaces/IERC6909.sol";
+import {IERC6909Fungible, IERC6909MetadataExt} from "misc/interfaces/IERC6909.sol";
 
 import {AssetId} from "src/types/AssetId.sol";
 

@@ -3,10 +3,10 @@ pragma solidity ^0.8.28;
 
 import "forge-std/Test.sol";
 
-import {MathLib} from "src/misc/libraries/MathLib.sol";
-import {D18, d18} from "src/misc/types/D18.sol";
-import {IERC7726} from "src/misc/interfaces/IERC7726.sol";
-import {IAuth} from "src/misc/interfaces/IAuth.sol";
+import {MathLib} from "misc/libraries/MathLib.sol";
+import {D18, d18} from "misc/types/D18.sol";
+import {IERC7726} from "misc/interfaces/IERC7726.sol";
+import {IAuth} from "misc/interfaces/IAuth.sol";
 
 import {PoolId} from "src/types/PoolId.sol";
 import {AssetId} from "src/types/AssetId.sol";

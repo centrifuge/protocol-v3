@@ -3,20 +3,20 @@ pragma solidity 0.8.28;
 
 import "forge-std/Script.sol";
 
-import {TransientValuation} from "src/misc/TransientValuation.sol";
-import {OneToOneValuation} from "src/misc/OneToOneValuation.sol";
-import {Multicall} from "src/misc/Multicall.sol";
+import {TransientValuation} from "misc/TransientValuation.sol";
+import {OneToOneValuation} from "misc/OneToOneValuation.sol";
+import {Multicall} from "misc/Multicall.sol";
 
-import {AssetId, newAssetId} from "src/pools/types/AssetId.sol";
-import {IGateway} from "src/pools/interfaces/IGateway.sol";
-import {IAdapter} from "src/pools/interfaces/IAdapter.sol";
-import {PoolRegistry} from "src/pools/PoolRegistry.sol";
-import {SingleShareClass} from "src/pools/SingleShareClass.sol";
-import {Holdings} from "src/pools/Holdings.sol";
-import {AssetManager} from "src/pools/AssetManager.sol";
-import {Accounting} from "src/pools/Accounting.sol";
-import {Gateway} from "src/pools/Gateway.sol";
-import {PoolManager, IPoolManager} from "src/pools/PoolManager.sol";
+import {AssetId, newAssetId} from "src/types/AssetId.sol";
+import {IGateway} from "src/interfaces/IGateway.sol";
+import {IAdapter} from "src/interfaces/IAdapter.sol";
+import {PoolRegistry} from "src/PoolRegistry.sol";
+import {SingleShareClass} from "src/SingleShareClass.sol";
+import {Holdings} from "src/Holdings.sol";
+import {AssetManager} from "src/AssetManager.sol";
+import {Accounting} from "src/Accounting.sol";
+import {Gateway} from "src/Gateway.sol";
+import {PoolManager, IPoolManager} from "src/PoolManager.sol";
 
 contract Deployer is Script {
     /// @dev Identifies an address that requires to be overwritten by a `file()` method before ending the deployment.

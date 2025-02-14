@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {Auth} from "src/misc/Auth.sol";
-import {MathLib} from "src/misc/libraries/MathLib.sol";
+import {Auth} from "misc/Auth.sol";
+import {MathLib} from "misc/libraries/MathLib.sol";
 
 import {PoolId, newPoolId} from "src/types/PoolId.sol";
 import {AssetId} from "src/types/AssetId.sol";

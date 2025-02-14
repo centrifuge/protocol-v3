@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {IMulticall} from "src/misc/interfaces/IMulticall.sol";
+import {IMulticall} from "misc/interfaces/IMulticall.sol";
 
 import {PoolId} from "src/types/PoolId.sol";
 import {IPoolLocker} from "src/interfaces/IPoolLocker.sol";

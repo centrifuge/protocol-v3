@@ -4,9 +4,9 @@ pragma solidity 0.8.28;
 import "forge-std/Test.sol";
 import {IERC165} from "forge-std/interfaces/IERC165.sol";
 
-import {IAuth} from "src/misc/interfaces/IAuth.sol";
-import {MathLib} from "src/misc/libraries/MathLib.sol";
-import {IERC6909, IERC6909MetadataExt, IERC6909TotalSupplyExt} from "src/misc/interfaces/IERC6909.sol";
+import {IAuth} from "misc/interfaces/IAuth.sol";
+import {MathLib} from "misc/libraries/MathLib.sol";
+import {IERC6909, IERC6909MetadataExt, IERC6909TotalSupplyExt} from "misc/interfaces/IERC6909.sol";
 
 import {AssetId} from "src/types/AssetId.sol";
 import {AssetManager} from "src/AssetManager.sol";
