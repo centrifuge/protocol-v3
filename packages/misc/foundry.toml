@@ -1,7 +1,7 @@
 [profile.default]
 out = '../../out'
 cache_path = '../../cache'
-libs = ['../../lib', 'lib']
+libs = ['../../lib']
 
 solc_version = "0.8.28"
 evm_version = "cancun"

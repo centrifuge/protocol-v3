@@ -1,1 +1,4 @@
 forge-std/=lib/forge-std/src/
+misc/=packages/misc/src/
+common/=packages/common/src/
+pools/=packages/pools/src/
