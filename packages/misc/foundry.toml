@@ -1,6 +1,6 @@
 [profile.default]
-out = '../../out'
-cache_path = '../../cache'
+out = '../../out/misc'
+cache_path = '../../cache/misc'
 libs = ['../../lib']
 
 solc_version = "0.8.28"

@@ -5,7 +5,7 @@ import {CastLib} from "misc/libraries/CastLib.sol";
 import {BytesLib} from "misc/libraries/BytesLib.sol";
 import {Auth} from "misc/Auth.sol";
 
-import {MessageType, MessageLib} from "src/common/libraries/MessageLib.sol";
+import {MessageType, MessageLib} from "src/libraries/MessageLib.sol";
 
 import {ShareClassId} from "src/types/ShareClassId.sol";
 import {AssetId} from "src/types/AssetId.sol";
