@@ -14,10 +14,10 @@ import {MessageDispatcher} from "src/common/MessageDispatcher.sol";
 import {JsonRegistry} from "script/utils/JsonRegistry.s.sol";
 
 import "forge-std/Script.sol";
+import {CreateXScript} from "createx-forge/script/CreateXScript.sol";
 
-abstract contract CommonDeployer is Script, JsonRegistry {
+abstract contract CommonDeployer is Script, JsonRegistry, CreateXScript {
     uint256 constant DELAY = 48 hours;
-    bytes32 immutable SALT;
     uint256 constant BASE_MSG_COST = 20000000000000000; // in Weight
 
     IAdapter[] adapters;
@@ -30,26 +30,27 @@ abstract contract CommonDeployer is Script, JsonRegistry {
     MessageProcessor public messageProcessor;
     MessageDispatcher public messageDispatcher;
 
-    constructor() {
-        // If no salt is provided, a pseudo-random salt is generated,
-        // thus effectively making the deployment non-deterministic
-        SALT = vm.envOr(
-            "DEPLOYMENT_SALT", keccak256(abi.encodePacked(string(abi.encodePacked(blockhash(block.number - 1)))))
-        );
-    }
+    function setUp() public virtual withCreateX {}
 
     function deployCommon(uint16 chainId, ISafe adminSafe_, address deployer) public {
         if (address(root) != address(0)) {
             return; // Already deployed. Make this method idempotent.
         }
 
-        root = new Root(DELAY, deployer);
+        root = Root(create3(_getSalt("root"), abi.encodePacked(type(Root).creationCode, abi.encode(DELAY, deployer))));
 
         uint64 messageGasLimit = uint64(vm.envOr("MESSAGE_COST", BASE_MSG_COST));
         uint64 proofGasLimit = uint64(vm.envOr("PROOF_COST", BASE_MSG_COST));
 
-        gasService = new GasService(messageGasLimit, proofGasLimit);
-        gateway = new Gateway(root, gasService);
+        gasService = GasService(
+            create3(
+                _getSalt("gasService"),
+                abi.encodePacked(type(GasService).creationCode, abi.encode(messageGasLimit, proofGasLimit))
+            )
+        );
+        gateway = Gateway(
+            create3(_getSalt("gateway"), abi.encodePacked(type(Gateway).creationCode, abi.encode(root, gasService)))
+        );
 
         messageProcessor = new MessageProcessor(root, gasService, deployer);
         messageDispatcher = new MessageDispatcher(chainId, root, gateway, deployer);
@@ -107,5 +108,24 @@ abstract contract CommonDeployer is Script, JsonRegistry {
         gateway.deny(deployer);
         messageProcessor.deny(deployer);
         messageDispatcher.deny(deployer);
+    }
+
+    /// @notice To be used when deploying without a vanity address, where the salt is just the contract name
+    /// @dev    Will only use the name if PRODUCTION_DEPLOYMENT is set to `true`, since this can only be used once.
+    ///         Else, a pseudo-random salt is generated.
+    function _getSalt(string memory name) internal returns (bytes32) {
+        if (vm.envOr("PRODUCTION_DEPLOYMENT", false)) {
+            require(bytes(name).length <= 32, "name-too-long");
+            return bytes32(bytes(name));
+        } else {
+            return keccak256(abi.encodePacked(string(abi.encodePacked(blockhash(block.number - 1)))));
+        }
+    }
+
+    /// @notice To be used when we want to generate a vanity address, where the salt is passed as an env var
+    /// @dev    If no salt is provided, a pseudo-random salt is generated,
+    ///         thus effectively making the deployment non-deterministic
+    function _envSalt(string memory name) internal returns (bytes32) {
+        return _getSalt(vm.envString(name));
     }
 }

@@ -39,11 +39,24 @@ contract VaultsDeployer is CommonDeployer {
     function deployVaults(uint16 chainId, ISafe adminSafe_, address deployer) public {
         deployCommon(chainId, adminSafe_, deployer);
 
-        escrow = new Escrow{salt: SALT}(deployer);
-        routerEscrow = new Escrow{salt: keccak256(abi.encodePacked(SALT, "escrow2"))}(deployer);
-        restrictedTransfers = address(new RestrictedTransfers{salt: SALT}(address(root), deployer));
-        freelyTransferable = address(new FreelyTransferable{salt: SALT}(address(root), address(escrow), deployer));
-        tokenFactory = address(new TokenFactory{salt: SALT}(address(root), deployer));
+        escrow =
+            Escrow(create3(_envSalt("ESCROW_SALT"), abi.encodePacked(type(Escrow).creationCode, abi.encode(deployer))));
+        routerEscrow =
+            Escrow(create3(_getSalt("routerEscrow"), abi.encodePacked(type(Escrow).creationCode, abi.encode(deployer))));
+        restrictedTransfers = create3(
+            _getSalt("restrictedTransfers"),
+            abi.encodePacked(type(RestrictedTransfers).creationCode, abi.encode(address(root), deployer))
+        );
+        freelyTransferable = create3(
+            _getSalt("freelyTransferable"),
+            abi.encodePacked(
+                type(FreelyTransferable).creationCode, abi.encode(address(root), address(escrow), deployer)
+            )
+        );
+        tokenFactory = create3(
+            _getSalt("tokenFactory"),
+            abi.encodePacked(type(TokenFactory).creationCode, abi.encode(address(root), deployer))
+        );
         asyncRequests = new AsyncRequests(address(root), address(escrow));
         syncRequests = new SyncRequests(address(root), address(escrow));
         asyncVaultFactory = address(new AsyncVaultFactory(address(root), address(asyncRequests)));
