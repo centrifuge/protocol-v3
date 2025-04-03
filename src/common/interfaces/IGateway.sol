@@ -16,6 +16,14 @@ interface IGateway is IMessageHandler, IMessageSender, IGatewayHandler {
 
     error NoBatched();
 
+    /// @notice message payment information
+    struct Payment {
+        /// @notice The pool from where to subsidize this payment
+        PoolId pool;
+        /// @notice The gas value to pay
+        uint64 gasValue;
+    }
+
     /// @dev Each adapter struct is packed with the quorum to reduce SLOADs on handle
     struct Adapter {
         /// @notice Starts at 1 and maps to id - 1 as the index on the adapters array

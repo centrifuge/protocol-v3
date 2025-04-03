@@ -61,7 +61,7 @@ contract Gateway is Auth, IGateway, IRecoverable {
     mapping(uint16 chainId => bytes) public /*transient*/ batch;
 
     /// @notice Current batch messages pending to be sent
-    mapping(uint16 chainId => uint64) public /*transient*/ batchGasLimit;
+    mapping(uint16 chainId => Payment) public /*transient*/ batchPayments;
 
     /// @notice Chains ID with pending batch messages
     uint16[] public /*transient*/ chainIds;
@@ -252,7 +252,9 @@ contract Gateway is Auth, IGateway, IRecoverable {
             pendingBatch = true;
 
             bytes storage previousMessage = batch[chainId];
-            batchGasLimit[chainId] += gasService.gasLimit(chainId, message);
+            PoolId poolId = processor.messagePoolId(message);
+            batchPayments[chainId].push(Payment(poolId, gasService.gasLimit(chainId, message)));
+
             if (previousMessage.length == 0) {
                 chainIds.push(chainId);
                 batch[chainId] = message;
@@ -273,8 +275,57 @@ contract Gateway is Auth, IGateway, IRecoverable {
         uint64 messageGasLimit = gasLimit(chainId, message);
         uint64 proofGasLimit = gasService.gasLimit(chainId, proof);
 
+        for (uint256 i; i < adapters_.length; i++) {
+            IAdapter currentAdapter = IAdapter(adapters_[i]);
+            bool isPrimaryAdapter = i == PRIMARY_ADAPTER_ID - 1;
+            bytes memory payload = isPrimaryAdapter ? message : proof;
+
+            uint256 consumed =
+                currentAdapter.estimate(chainId, payload, isPrimaryAdapter ? messageGasLimit : proofGasLimit);
+
+            bool wasEmpty = false;
+            if (fuel > 0 || wasEmpty) {
+                // The payment is done by topUp() method. No subsided pools are used.
+                require(consumed <= fuel, "Gateway/not-enough-gas-funds");
+                fuel -= consumed;
+
+                // We want to fail in the next iteration and avoid using subsidizing pools.
+                wasEmpty = fuel == 0;
+
+                currentAdapter.send{value: consumed}(
+                    chainId, payload, isPrimaryAdapter ? messageGasLimit : proofGasLimit, address(this)
+                );
+            } else if (isBatching) {
+                // The payment is done by the subsidized pools used in the batch.
+                bool canPay = false;
+                uint64 increment = consumed / (isPrimaryAdapter ? messageGasLimit : proofGasLimit);
+                Payment memory payments = batchPayments[chainId];
+                for (uint256 j; j < payments.length;) {
+                    uint64 consumedPerMessage = increment * payments[j].gasValue;
+                    if (consumedPerMessage <= subsidy[payments[j].poolId]) {
+                        return true;
+                    }
+                    subsidy[payments[j].poolId] -= consumedPerMessage;
+                }
+
+                currentAdapter.send{value: consumed ? canPay : 0}(
+                    chainId, payload, isPrimaryAdapter ? messageGasLimit : proofGasLimit, address(this)
+                );
+            } else {
+                PoolId poolId = processor.messagePoolId(message);
+                bool canPay = consumed <= subsidy[poolId];
+
+                if (canPay) {
+                    subsidy[poolId] -= consumed;
+                }
+
+                currentAdapter.send{value: consumed ? canPay : 0}(
+                    chainId, payload, isPrimaryAdapter ? messageGasLimit : proofGasLimit, address(this)
+                );
+            }
+        }
+
         if (fuel != 0) {
-            uint256 tank = fuel;
             for (uint256 i; i < adapters_.length; i++) {
                 IAdapter currentAdapter = IAdapter(adapters_[i]);
                 bool isPrimaryAdapter = i == PRIMARY_ADAPTER_ID - 1;
@@ -283,15 +334,15 @@ contract Gateway is Auth, IGateway, IRecoverable {
                 uint256 consumed =
                     currentAdapter.estimate(chainId, payload, isPrimaryAdapter ? messageGasLimit : proofGasLimit);
 
-                require(consumed <= tank, "Gateway/not-enough-gas-funds");
-                tank -= consumed;
+                require(consumed <= fuel, "Gateway/not-enough-gas-funds");
+                fuel -= consumed;
 
                 currentAdapter.send{value: consumed}(
                     chainId, payload, isPrimaryAdapter ? messageGasLimit : proofGasLimit, address(this)
                 );
             }
             fuel = 0;
-        } else if (!isBatching) {
+        } else {
             PoolId poolId = processor.messagePoolId(message);
             for (uint256 i; i < adapters_.length; i++) {
                 IAdapter currentAdapter = IAdapter(adapters_[i]);
@@ -312,8 +363,6 @@ contract Gateway is Auth, IGateway, IRecoverable {
                     );
                 }
             }
-        } else {
-            revert("Gateway/not-enough-gas-funds");
         }
 
         emit SendMessage(message);
@@ -343,7 +392,7 @@ contract Gateway is Auth, IGateway, IRecoverable {
             uint16 chainId = chainIds[i];
             _send(chainId, batch[chainId]);
             delete batch[chainId];
-            delete batchGasLimit[chainId];
+            delete batchPayments[chainId];
         }
 
         delete chainIds;
@@ -361,7 +410,12 @@ contract Gateway is Auth, IGateway, IRecoverable {
         returns (uint64 messageGasLimit)
     {
         if (isBatching) {
-            return batchGasLimit[chainId];
+            uint64 acc = 0;
+            Payment memory payments = batchPayments[chainId];
+            for (uint256 i; i < payments.length;) {
+                acc += payments[i].gasValue;
+            }
+            return acc;
         }
         else {
             return gasService.gasLimit(chainId, message);
