@@ -72,7 +72,6 @@ contract MessageProcessor is Auth, IMessageProcessor {
     /// @inheritdoc IMessageHandler
     function handle(uint16, bytes calldata message) external auth {
         MessageType kind = message.messageType();
-
         if (kind == MessageType.ScheduleUpgrade) {
             MessageLib.ScheduleUpgrade memory m = message.deserializeScheduleUpgrade();
             root.scheduleRely(address(bytes20(m.target)));
@@ -94,9 +93,12 @@ contract MessageProcessor is Auth, IMessageProcessor {
             poolManager.addShareClass(
                 m.poolId, m.scId, m.name, m.symbol.toString(), m.decimals, m.salt, address(bytes20(m.hook))
             );
-        } else if (kind == MessageType.UpdateShareClassPrice) {
-            MessageLib.UpdateShareClassPrice memory m = MessageLib.deserializeUpdateShareClassPrice(message);
-            poolManager.updateSharePrice(m.poolId, m.scId, m.assetId, m.price, m.timestamp);
+        } else if (kind == MessageType.NotifySharePrice) {
+            MessageLib.NotifySharePrice memory m = MessageLib.deserializeNotifySharePrice(message);
+            poolManager.updateSharePrice(m.poolId, m.scId, m.price, m.timestamp);
+        } else if (kind == MessageType.NotifyAssetPrice) {
+            MessageLib.NotifyAssetPrice memory m = MessageLib.deserializeNotifyAssetPrice(message);
+            poolManager.updateAssetPrice(m.poolId, m.scId, m.assetId, m.price, m.timestamp);
         } else if (kind == MessageType.UpdateShareClassMetadata) {
             MessageLib.UpdateShareClassMetadata memory m = MessageLib.deserializeUpdateShareClassMetadata(message);
             poolManager.updateShareMetadata(m.poolId, m.scId, m.name, m.symbol.toString());

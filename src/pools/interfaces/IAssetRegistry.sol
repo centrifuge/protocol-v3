@@ -30,4 +30,14 @@ interface IAssetRegistry is IERC6909MetadataExt, IERC6909Fungible {
     ///                     Adding new assets happens from the Vault's side.
     ///                     `decimals` MUST be different than 0.
     function registerAsset(AssetId assetId, string calldata name, string calldata symbol, uint8 decimals) external;
+
+    /// @notice Provides one in the decimals of the asset
+    ///
+    /// @param assetId The relevant asset
+    function unitAmount(AssetId assetId) external view returns (uint128);
+
+    /// @notice Provides one in the decimals of the asset
+    ///
+    /// @param assetId The relevant asset
+    function decimals(AssetId assetId) external view returns (uint8);
 }

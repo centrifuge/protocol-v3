@@ -40,9 +40,7 @@ contract SyncDepositTest is BaseTest {
         (, address syncVault_, uint128 assetId) = deploySimpleVault(VaultKind.SyncDepositAsyncRedeem);
         SyncDepositVault syncVault = SyncDepositVault(syncVault_);
         IShareToken shareToken = IShareToken(address(syncVault.share()));
-        centrifugeChain.updateSharePrice(
-            syncVault.poolId(), syncVault.trancheId(), assetId, price, uint64(block.timestamp)
-        );
+        centrifugeChain.updateSharePrice(syncVault.poolId(), syncVault.trancheId(), price, uint64(block.timestamp));
 
         // Retrieve async vault
         address asyncVault_ =
@@ -86,7 +84,7 @@ contract SyncDepositTest is BaseTest {
         PoolId poolId = PoolId.wrap(vault.poolId());
         ShareClassId scId = ShareClassId.wrap(vault.trancheId());
         D18 pricePerShare = d18(price);
-        D18 pricePerUnit = d18(1);
+        D18 pricePerUnit = d18(1, 1);
         uint256 timestamp = uint256(block.timestamp);
         uint128 depositAssetAmount = vault.previewMint(shares).toUint128();
         VaultDetails memory vaultDetails = poolManager.vaultDetails(address(vault));
@@ -111,13 +109,6 @@ contract SyncDepositTest is BaseTest {
             uint64(timestamp),
             journalEntries,
             journalEntries
-        );
-
-        vm.expectEmit(false, false, false, false);
-        emit IGateway.SendMessage(bytes(""));
-        vm.expectEmit();
-        emit IBalanceSheetManager.UpdateValue(
-            poolId, scId, vault.asset(), vaultDetails.tokenId, pricePerUnit, uint64(timestamp)
         );
     }
 }

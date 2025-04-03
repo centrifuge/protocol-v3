@@ -44,7 +44,6 @@ contract SyncRequests is BaseInvestmentManager, ISyncRequests {
 
     IBalanceSheetManager public balanceSheetManager;
 
-    mapping(address vaultAddr => uint64) public maxPriceAge;
     // TODO(follow-up PR): Support multiple vaults
     mapping(uint64 poolId => mapping(bytes16 scId => mapping(uint128 assetId => address vault))) public vault;
 
@@ -153,7 +152,7 @@ contract SyncRequests is BaseInvestmentManager, ISyncRequests {
         SyncDepositVault vault_ = SyncDepositVault(vaultAddr);
         uint128 assetId = poolManager.vaultDetails(vaultAddr).assetId;
 
-        uint128 latestPrice = _pricePerShare(vaultAddr, vault_.poolId(), vault_.trancheId(), assetId);
+        uint128 latestPrice = _pricePerShare(vaultAddr, vault_.poolId(), vault_.trancheId(), assetId).raw();
         assets = PriceConversionLib.calculateAssets(shares.toUint128(), vaultAddr, latestPrice, MathLib.Rounding.Down);
     }
 
@@ -166,23 +165,13 @@ contract SyncRequests is BaseInvestmentManager, ISyncRequests {
         SyncDepositVault vault_ = SyncDepositVault(vaultAddr);
         uint128 assetId = poolManager.vaultDetails(vaultAddr).assetId;
 
-        uint128 latestPrice = _pricePerShare(vaultAddr, vault_.poolId(), vault_.trancheId(), assetId);
+        uint128 latestPrice = _pricePerShare(vaultAddr, vault_.poolId(), vault_.trancheId(), assetId).raw();
         shares = PriceConversionLib.calculateShares(assets.toUint128(), vaultAddr, latestPrice, MathLib.Rounding.Down);
     }
 
     /// @inheritdoc IVaultManager
     function vaultByAssetId(uint64 poolId, bytes16 scId, uint128 assetId) public view returns (address) {
         return vault[poolId][scId][assetId];
-    }
-
-    /// --- IUpdateContract ---
-    function update(uint64, bytes16, bytes calldata payload) external auth {
-        MessageLib.UpdateContractMaxPriceAge memory m = MessageLib.deserializeUpdateContractMaxPriceAge(payload);
-
-        address vaultAddr = address(bytes20(m.vault));
-        maxPriceAge[vaultAddr] = m.maxPriceAge;
-
-        emit MaxPriceAgeUpdate(vaultAddr, m.maxPriceAge);
     }
 
     /// @inheritdoc IVaultManager
@@ -216,7 +205,7 @@ contract SyncRequests is BaseInvestmentManager, ISyncRequests {
         uint64 poolId_ = vault_.poolId();
         bytes16 scId_ = vault_.trancheId();
         VaultDetails memory vaultDetails = poolManager.vaultDetails(vaultAddr);
-        D18 pricePerShare = d18(_pricePerShare(vaultAddr, poolId_, scId_, vaultDetails.assetId));
+        D18 pricePerShare = _pricePerShare(vaultAddr, poolId_, scId_, vaultDetails.assetId);
 
         PoolId poolId = PoolId.wrap(poolId_);
         ShareClassId scId = ShareClassId.wrap(scId_);
@@ -235,10 +224,10 @@ contract SyncRequests is BaseInvestmentManager, ISyncRequests {
         VaultDetails memory vaultDetails,
         uint128 depositAssetAmount
     ) internal {
-        // TODO(follow-up PR): Remove hardcoding
-        D18 pricePerAssetInPoolCurrency = d18(1);
+        // NOTE: We want CP to use the default accounting accounts
         JournalEntry[] memory journalEntries = new JournalEntry[](0);
         Meta memory depositMeta = Meta(journalEntries, journalEntries);
+        (D18 pricePerUnit,) = poolManager.checkedPriceAssetToShare(poolId.raw(), scId.raw(), vaultDetails.assetId);
 
         // Notify CP about updated holdings
         balanceSheetManager.deposit(
@@ -248,24 +237,19 @@ contract SyncRequests is BaseInvestmentManager, ISyncRequests {
             vaultDetails.tokenId,
             escrow,
             depositAssetAmount,
-            pricePerAssetInPoolCurrency,
+            pricePerUnit,
             depositMeta
-        );
-
-        // Notify CP about updated holding value
-        balanceSheetManager.updateValue(
-            poolId, scId, vaultDetails.asset, vaultDetails.tokenId, pricePerAssetInPoolCurrency
         );
     }
 
     /// @dev Retrieve the latest price for the share class token
-    function _pricePerShare(address vaultAddr, uint64 poolId, bytes16 scId, uint128 assetId)
+    function _pricePerShare(address, /* vaultAddr */ uint64 poolId, bytes16 scId, uint128 assetId)
         internal
         view
-        returns (uint128 latestPrice)
+        returns (D18)
     {
-        (uint128 price, uint64 computedAt) = poolManager.sharePrice(poolId, scId, assetId);
-        require(block.timestamp - computedAt <= maxPriceAge[vaultAddr], PriceTooOld());
-        return price;
+        // TODO: Decide on whether we should use the checked/ or unchcked version
+        (D18 latestPrice,) = poolManager.checkedPriceAssetToShare(poolId, scId, assetId);
+        return latestPrice;
     }
 }

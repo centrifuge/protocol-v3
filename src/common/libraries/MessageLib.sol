@@ -22,7 +22,8 @@ enum MessageType {
     RegisterAsset,
     NotifyPool,
     NotifyShareClass,
-    UpdateShareClassPrice,
+    NotifySharePrice,
+    NotifyAssetPrice,
     UpdateShareClassMetadata,
     UpdateShareClassHook,
     TransferShares,
@@ -92,7 +93,8 @@ library MessageLib {
         (178 << uint8(MessageType.RegisterAsset) * 8) +
         (9   << uint8(MessageType.NotifyPool) * 8) +
         (250 << uint8(MessageType.NotifyShareClass) * 8) +
-        (65  << uint8(MessageType.UpdateShareClassPrice) * 8) +
+        (49 << uint8(MessageType.NotifySharePrice) * 8) +
+        (65 << uint8(MessageType.NotifyAssetPrice) * 8) +
         (185 << uint8(MessageType.UpdateShareClassMetadata) * 8) +
         (57  << uint8(MessageType.UpdateShareClassHook) * 8) +
         (73  << uint8(MessageType.TransferShares) * 8) +
@@ -373,10 +375,35 @@ library MessageLib {
     }
 
     //---------------------------------------
-    //    UpdateShareClassPrice
+    //    NotifySharePrice
     //---------------------------------------
 
-    struct UpdateShareClassPrice {
+    struct NotifySharePrice {
+        uint64 poolId;
+        bytes16 scId;
+        uint128 price;
+        uint64 timestamp;
+    }
+
+    function deserializeNotifySharePrice(bytes memory data) internal pure returns (NotifySharePrice memory) {
+        require(messageType(data) == MessageType.NotifySharePrice, UnknownMessageType());
+        return NotifySharePrice({
+            poolId: data.toUint64(1),
+            scId: data.toBytes16(9),
+            price: data.toUint128(25),
+            timestamp: data.toUint64(41)
+        });
+    }
+
+    function serialize(NotifySharePrice memory t) internal pure returns (bytes memory) {
+        return abi.encodePacked(MessageType.NotifySharePrice, t.poolId, t.scId, t.price, t.timestamp);
+    }
+
+    //---------------------------------------
+    //    NotifyAssetPrice
+    //---------------------------------------
+
+    struct NotifyAssetPrice {
         uint64 poolId;
         bytes16 scId;
         uint128 assetId;
@@ -384,9 +411,9 @@ library MessageLib {
         uint64 timestamp;
     }
 
-    function deserializeUpdateShareClassPrice(bytes memory data) internal pure returns (UpdateShareClassPrice memory) {
-        require(messageType(data) == MessageType.UpdateShareClassPrice, UnknownMessageType());
-        return UpdateShareClassPrice({
+    function deserializeNotifyAssetPrice(bytes memory data) internal pure returns (NotifyAssetPrice memory) {
+        require(messageType(data) == MessageType.NotifyAssetPrice, UnknownMessageType());
+        return NotifyAssetPrice({
             poolId: data.toUint64(1),
             scId: data.toBytes16(9),
             assetId: data.toUint128(25),
@@ -395,8 +422,8 @@ library MessageLib {
         });
     }
 
-    function serialize(UpdateShareClassPrice memory t) internal pure returns (bytes memory) {
-        return abi.encodePacked(MessageType.UpdateShareClassPrice, t.poolId, t.scId, t.assetId, t.price, t.timestamp);
+    function serialize(NotifyAssetPrice memory t) internal pure returns (bytes memory) {
+        return abi.encodePacked(MessageType.NotifyAssetPrice, t.poolId, t.scId, t.assetId, t.price, t.timestamp);
     }
 
     //---------------------------------------
@@ -650,7 +677,7 @@ library MessageLib {
     //---------------------------------------
 
     struct UpdateContractMaxPriceAge {
-        bytes32 vault;
+        uint128 assetId;
         uint64 maxPriceAge;
     }
 
@@ -661,11 +688,11 @@ library MessageLib {
     {
         require(updateContractType(data) == UpdateContractType.MaxPriceAge, UnknownMessageType());
 
-        return UpdateContractMaxPriceAge({vault: data.toBytes32(1), maxPriceAge: data.toUint64(33)});
+        return UpdateContractMaxPriceAge({assetId: data.toUint128(1), maxPriceAge: data.toUint64(17)});
     }
 
     function serialize(UpdateContractMaxPriceAge memory t) internal pure returns (bytes memory) {
-        return abi.encodePacked(UpdateContractType.MaxPriceAge, t.vault, t.maxPriceAge);
+        return abi.encodePacked(UpdateContractType.MaxPriceAge, t.assetId, t.maxPriceAge);
     }
 
     //---------------------------------------

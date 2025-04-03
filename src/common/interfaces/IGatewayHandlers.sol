@@ -85,9 +85,13 @@ interface IPoolManagerGatewayHandler {
     function updateShareMetadata(uint64 poolId, bytes16 scId, string memory tokenName, string memory tokenSymbol)
         external;
 
-    /// @notice  Updates the price of a share class token
+    /// @notice  Updates the price of a share class token per unit of pool denomination currency
     /// @dev     The function can only be executed by the gateway contract.
-    function updateSharePrice(uint64 poolId, bytes16 scId, uint128 assetId, uint128 price, uint64 computedAt)
+    function updateSharePrice(uint64 poolId, bytes16 scId, uint128 price, uint64 computedAt) external;
+
+    /// @notice  Updates the price of an asset per unit of pool denomination currency
+    /// @dev     The function can only be executed by the gateway contract.
+    function updateAssetPrice(uint64 poolId, bytes16 scId, uint128 assetId, uint128 price, uint64 computedAt)
         external;
 
     /// @notice Updates the hook of a share class token
