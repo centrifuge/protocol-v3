@@ -219,6 +219,27 @@ contract BalanceSheetManager is
         _revoke(poolId, scId, from, pricePerShare, shares);
     }
 
+    /// @inheritdoc IBalanceSheetManagerGatewayHandler
+    function approvedDeposits(PoolId poolId, ShareClassId scId, AssetId assetId, uint128 assetAmount) external auth {
+        (address token, uint256 tokenId) = poolManager.checkedIdToAsset(assetId.raw());
+        // TODO(wischli): Rm hardcode post #187 merge
+        D18 pricePoolPerAsset = d18(1);
+        JournalEntry[] memory journalEntries = new JournalEntry[](0);
+        Meta memory meta = Meta(journalEntries, journalEntries);
+
+        escrow.pendingDepositIncrease(token, tokenId, poolId.raw(), scId.raw(), assetAmount);
+        sender.sendUpdateHoldingAmount(
+            poolId, scId, assetId, address(escrow), assetAmount, pricePoolPerAsset, true, meta
+        );
+        this.updateValue(poolId, scId, token, tokenId, pricePoolPerAsset);
+    }
+
+    /// @inheritdoc IBalanceSheetManagerGatewayHandler
+    function revokedShares(PoolId poolId, ShareClassId scId, AssetId assetId, uint128 assetAmount) external auth {
+        (address token, uint256 tokenId) = poolManager.checkedIdToAsset(assetId.raw());
+        escrow.reserveIncrease(token, tokenId, poolId.raw(), scId.raw(), assetAmount);
+    }
+
     // --- Internal ---
     function _issue(PoolId poolId, ShareClassId scId, address to, D18 pricePerShare, uint128 shares, bool asAllowance)
         internal
