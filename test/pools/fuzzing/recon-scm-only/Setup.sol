@@ -30,6 +30,7 @@ import {IMessageSender} from "src/common/interfaces/IMessageSender.sol";
 import {IAsyncRequests} from "src/vaults/interfaces/investments/IAsyncRequests.sol";
 import {IShareClassManager} from "src/hub/interfaces/IShareClassManager.sol";
 import {IGateway} from "src/common/interfaces/IGateway.sol";
+import {IERC7726} from "src/misc/interfaces/IERC7726.sol";
 import {IMessageHandler} from "src/common/interfaces/IMessageHandler.sol";
 import {TransientValuation, ITransientValuation} from "src/misc/TransientValuation.sol";
 import {IdentityValuation} from "src/misc/IdentityValuation.sol";
@@ -49,10 +50,22 @@ contract MockHubRegistry {
     function currency(PoolId poolId) external view returns (AssetId) {}
 }
 
+
+contract MockValuation {
+    function getQuote(uint256 baseAmount, address base, address quote) external view returns (uint256 quoteAmount) {
+        return baseAmount;
+    }
+
+}
+
+
 abstract contract Setup is BaseSetup, ActorManager, AssetManager, Utils {
 
     ShareClassManager shareClassManager;
     MockHubRegistry mockRegistry;
+    IERC7726 valuation;
+    PoolId poolId;
+    ShareClassId scId;
 
     modifier stateless {
         _;
@@ -67,9 +80,21 @@ abstract contract Setup is BaseSetup, ActorManager, AssetManager, Utils {
         _addActor(address(0x411c3));
         _addActor(address(0xb0b));
 
+        
+
+        mockRegistry = new MockHubRegistry();
+        valuation = IERC7726(address(new MockValuation()));
+
         shareClassManager = new ShareClassManager(IHubRegistry(address(mockRegistry)), address(this));
         shareClassManager.rely(address(this));
+
+        poolId = PoolId.wrap(1); // Create Pool ID
+        scId = shareClassManager.addShareClass(poolId, "Name", "Symbol", bytes32(uint256(1)), hex"");
     }
+
+
+    // Clamp investors
+    // Use them as actors?
 
     /// === MODIFIERS === ///
     /// Prank admin and actor
