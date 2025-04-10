@@ -32,8 +32,6 @@ interface IGateway is IMessageHandler, IMessageSender, IGatewayHandler {
     struct Adapter {
         /// @notice Starts at 1 and maps to id - 1 as the index on the adapters array
         uint8 id;
-        /// @notice Number of votes required for a message to be executed
-        uint8 quorum;
         /// @notice Each time the quorum is decreased, a new session starts which invalidates old votes
         uint64 activeSessionId;
     }
@@ -46,12 +44,13 @@ interface IGateway is IMessageHandler, IMessageSender, IGatewayHandler {
         uint16[MAX_ADAPTER_COUNT] votes;
         /// @notice Each time adapters are updated, a new session starts which invalidates old votes
         uint64 sessionId;
+        uint32 count;
         bytes pendingBatch;
     }
 
     // --- Events ---
-    event ProcessBatch(uint16 centrifugeId, bytes batch, IAdapter adapter);
-    event ProcessProof(uint16 centrifugeId, bytes32 batchHash, IAdapter adapter);
+    event HandleBatch(uint16 centrifugeId, bytes batch, IAdapter adapter);
+    event HandleProof(uint16 centrifugeId, bytes32 batchHash, IAdapter adapter);
     event ExecuteMessage(uint16 centrifugeId, bytes message);
     event FailMessage(uint16 centrifugeId, bytes message, bytes error);
     event SendBatch(uint16 centrifugeId, bytes batch, IAdapter adapter);
@@ -129,6 +128,13 @@ interface IGateway is IMessageHandler, IMessageSender, IGatewayHandler {
     /// @param  data New address.
     function file(bytes32 what, address data) external;
 
+    /// @notice Retry a previous failed message to be execute again
+    function retryMessage(uint16 centrifugeId, bytes memory message) external;
+
+    /// @notice Execute a batch identified by batchHash.
+    /// If some message in the batch fails, can be recovered using retry()
+    function executeBatch(uint16 centrifugeId, bytes32 batchHash) external;
+
     /// @notice Prepays for the TX cost for sending the messages through the adapters
     ///         Currently being called from Vault Router only.
     ///         In order to prepay, the method MUST be called with `msg.value`.
@@ -149,16 +155,14 @@ interface IGateway is IMessageHandler, IMessageSender, IGatewayHandler {
     ///         these will need to be recovered serially (increasing the challenge period for each failed adapter).
     /// @param  centrifugeId Chain where the adapter is configured for
     /// @param  adapter Adapter's address that the recovery is targeting
-    /// @param  message Hash of the message to be recovered
-    function executeMessageRecovery(uint16 centrifugeId, IAdapter adapter, bytes calldata message) external;
+    /// @param  payload Hash of the message to be recovered
+    function executeMessageRecovery(uint16 centrifugeId, IAdapter adapter, bytes calldata payload) external;
 
     // --- Helpers ---
-    /// @notice A view method of the current quorum.abi
+    /// @notice A view method of the number of adapters or quorum
     /// @dev    Quorum shows the amount of votes needed in order for a message to be dispatched further.
-    ///         The quorum is taken from the first adapter.
-    ///         Current quorum is the amount of all adapters.
     /// @param  centrifugeId Chain where the adapter is configured for
-    /// return  Needed amount
+    /// @return Number of adapters
     function quorum(uint16 centrifugeId) external view returns (uint8);
 
     /// @notice Gets the current active routers session id.
@@ -194,10 +198,6 @@ interface IGateway is IMessageHandler, IMessageSender, IGatewayHandler {
     /// @notice Returns the address of the adapter at the given id.
     /// @param  centrifugeId Chain where the adapter is configured for
     function adapters(uint16 centrifugeId, uint256 id) external view returns (IAdapter);
-
-    /// @notice Returns the number of adapters.
-    /// @param  centrifugeId Chain where the adapter is configured for
-    function adapterCount(uint16 centrifugeId) external view returns (uint256);
 
     /// @notice Returns the timestamp when the given recovery can be executed.
     /// @param  centrifugeId Chain where the adapter is configured for

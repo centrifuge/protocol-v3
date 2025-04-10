@@ -6,9 +6,9 @@ import {ArrayLib} from "src/misc/libraries/ArrayLib.sol";
 import {BytesLib} from "src/misc/libraries/BytesLib.sol";
 import {MathLib} from "src/misc/libraries/MathLib.sol";
 import {Recoverable} from "src/misc/Recoverable.sol";
+import {SafeTransferLib} from "src/misc/libraries/SafeTransferLib.sol";
 
 import {IRoot} from "src/common/interfaces/IRoot.sol";
-import {IGasService} from "src/common/interfaces/IGasService.sol";
 import {IAdapter} from "src/common/interfaces/IAdapter.sol";
 import {IMessageProcessor} from "src/common/interfaces/IMessageProcessor.sol";
 import {IMessageSender} from "src/common/interfaces/IMessageSender.sol";
@@ -33,16 +33,15 @@ contract Gateway is Auth, IGateway, Recoverable {
 
     // Dependencies
     IRoot public immutable root;
-    IGasService public gasService;
     IMessageProcessor public processor;
 
     // Batching
     bool public transient isBatching;
     BatchLocator[] public /*transient*/ batchLocators;
     mapping(uint16 centrifugeId => mapping(PoolId => bytes)) public /*transient*/ outboundBatch;
-    mapping(uint16 centrifugeId => mapping(PoolId => uint64)) public /*transient*/ batchGasLimit;
 
     // Payment
+    uint64 public gasLimit;
     PaymentMethod public transient paymentMethod;
     uint256 public transient fuel;
     mapping(PoolId => uint256) public subsidy;
@@ -58,9 +57,9 @@ contract Gateway is Auth, IGateway, Recoverable {
         public recoveries;
 
 
-    constructor(IRoot root_, IGasService gasService_) Auth(msg.sender) {
+    constructor(IRoot root_, uint64 gasLimit_) Auth(msg.sender) {
         root = root_;
-        gasService = gasService_;
+        gasLimit = gasLimit_;
     }
 
     modifier pauseable() {
@@ -94,7 +93,7 @@ contract Gateway is Auth, IGateway, Recoverable {
                 require(_activeAdapters[centrifugeId][addresses[j]].id == 0, NoDuplicatesAllowed());
 
                 // Ids are assigned sequentially starting at 1
-                _activeAdapters[centrifugeId][addresses[j]] = Adapter(j + 1, quorum_, sessionId);
+                _activeAdapters[centrifugeId][addresses[j]] = Adapter(j + 1, sessionId);
             }
 
             adapters[centrifugeId] = addresses;
@@ -107,8 +106,8 @@ contract Gateway is Auth, IGateway, Recoverable {
 
     /// @inheritdoc IGateway
     function file(bytes32 what, address instance) external auth {
-        if (what == "gasService") gasService = IGasService(instance);
-        else if (what == "processor") processor = IMessageProcessor(instance);
+        if (what == "processor") processor = IMessageProcessor(instance);
+        else if (what == "gasLimit") gasLimit = uint64(uint160(bytes20(instance)));
         else revert FileUnrecognizedParam();
 
         emit File(what, instance);
@@ -134,22 +133,17 @@ contract Gateway is Auth, IGateway, Recoverable {
 
         bytes32 messageProofHash = processor.messageProofHash(payload);
         bool isMessageProof = messageProofHash != bytes32(0);
-        if (adapter.quorum == 1 && !isMessageProof) {
-            // Special case for gas efficiency
-            _handleBatch(centrifugeId, payload);
-            return;
-        }
 
         // Verify adapter and parse message hash
         bytes32 batchHash;
         if (isMessageProof) {
             require(adapter.id != PRIMARY_ADAPTER_ID, NonProofAdapter());
             batchHash = messageProofHash;
-            emit ProcessProof(centrifugeId, batchHash, adapter_);
+            emit HandleProof(centrifugeId, batchHash, adapter_);
         } else {
             require(adapter.id == PRIMARY_ADAPTER_ID, NonMessageAdapter());
             batchHash = keccak256(payload);
-            emit ProcessBatch(centrifugeId, payload, adapter_);
+            emit HandleBatch(centrifugeId, payload, adapter_);
         }
 
         InboundBatch storage state = inboundBatch[centrifugeId][batchHash];
@@ -163,32 +157,36 @@ contract Gateway is Auth, IGateway, Recoverable {
         // Increase vote
         state.votes[adapter.id - 1]++;
 
-        if (state.votes.countNonZeroValues() >= adapter.quorum) {
-            // Reduce votes by quorum
-            state.votes.decreaseFirstNValues(adapter.quorum);
+        if (!isMessageProof) {
+            state.pendingBatch = payload;
+        }
+    }
 
-            if (isMessageProof) {
-                _handleBatch(centrifugeId, state.pendingBatch);
-            }
-            else {
-                _handleBatch(centrifugeId, payload);
-            }
+    function executeBatch(uint16 centrifugeId, bytes32 batchHash) external {
+        InboundBatch storage state = inboundBatch[centrifugeId][batchHash];
+
+        uint8 quorum_ = quorum(centrifugeId);
+        if (state.votes.countNonZeroValues() >= quorum_) {
+            // Reduce votes by quorum
+            state.votes.decreaseFirstNValues(quorum_);
+
+            _processBatch(centrifugeId, state.pendingBatch);
 
             // Only if there are no more pending messages, remove the pending message
             if (state.votes.isEmpty()) {
                 delete state.pendingBatch;
             }
-        } else if (!isMessageProof) {
-            state.pendingBatch = payload;
         }
     }
 
-    function _handleBatch(uint16 centrifugeId, bytes memory batch_) internal {
+    function _processBatch(uint16 centrifugeId, bytes memory batch_) internal {
         bytes memory message = batch_;
         for (uint256 start; start < batch_.length;) {
             uint256 length = processor.messageLength(message);
             message = batch_.slice(start, length);
             start += length;
+
+            uint256 previousGas = gasleft();
 
             try processor.handle(centrifugeId, message) {
                 emit ExecuteMessage(centrifugeId, message);
@@ -198,10 +196,18 @@ contract Gateway is Auth, IGateway, Recoverable {
                 failedMessages[centrifugeId][messageHash]++;
                 emit FailMessage(centrifugeId, message, err);
             }
+
+            PoolId poolId = processor.messagePoolId(message);
+            uint256 refunded = (gasleft() - previousGas) * tx.gasprice;
+
+            if (subsidy[poolId] >= refunded) {
+                subsidy[poolId] -= refunded;
+                SafeTransferLib.safeTransferETH(msg.sender, refunded);
+            }
         }
     }
 
-    function retry(uint16 centrifugeId, bytes memory message) external {
+    function retryMessage(uint16 centrifugeId, bytes memory message) external {
         bytes32 messageHash = keccak256(message);
         require(failedMessages[centrifugeId][messageHash] > 0, NotFailedMessage());
 
@@ -225,16 +231,16 @@ contract Gateway is Auth, IGateway, Recoverable {
     }
 
     /// @inheritdoc IGateway
-    function executeMessageRecovery(uint16 centrifugeId, IAdapter adapter, bytes calldata message) external {
-        bytes32 batchHash = keccak256(message);
+    function executeMessageRecovery(uint16 centrifugeId, IAdapter adapter, bytes calldata payload) external {
+        bytes32 batchHash = keccak256(payload);
         uint256 recovery = recoveries[centrifugeId][adapter][batchHash];
 
         require(recovery != 0, MessageRecoveryNotInitiated());
         require(recovery <= block.timestamp, MessageRecoveryChallengePeriodNotEnded());
 
         delete recoveries[centrifugeId][adapter][batchHash];
-        _handle(centrifugeId, message, adapter, true);
-        emit ExecuteMessageRecovery(centrifugeId, message, adapter);
+        _handle(centrifugeId, payload, adapter, true);
+        emit ExecuteMessageRecovery(centrifugeId, payload, adapter);
     }
 
     //----------------------------------------------------------------------------------------------
@@ -251,8 +257,6 @@ contract Gateway is Auth, IGateway, Recoverable {
 
         if (isBatching) {
             bytes storage previousMessage = outboundBatch[centrifugeId][poolId];
-
-            batchGasLimit[centrifugeId][poolId] += gasService.gasLimit(centrifugeId, message);
 
             if (previousMessage.length == 0) {
                 batchLocators.push(BatchLocator(centrifugeId, poolId));
@@ -271,15 +275,10 @@ contract Gateway is Auth, IGateway, Recoverable {
         IAdapter[] memory adapters_ = adapters[centrifugeId];
         require(adapters[centrifugeId].length != 0, EmptyAdapterSet());
 
-        uint64 batchGasLimit_ =
-            (isBatching) ? batchGasLimit[centrifugeId][poolId] : gasService.gasLimit(centrifugeId, batch);
-        uint64 proofGasLimit = gasService.gasLimit(centrifugeId, proof);
-
         for (uint256 i; i < adapters_.length; i++) {
             IAdapter currentAdapter = IAdapter(adapters_[i]);
             bool isPrimaryAdapter = i == PRIMARY_ADAPTER_ID - 1;
             bytes memory payload = isPrimaryAdapter ? batch : proof;
-            uint64 gasLimit = isPrimaryAdapter ? batchGasLimit_ : proofGasLimit;
 
             uint256 consumed = currentAdapter.estimate(centrifugeId, payload, gasLimit);
 
@@ -329,7 +328,6 @@ contract Gateway is Auth, IGateway, Recoverable {
             BatchLocator memory locator = batchLocators[i];
             _send(locator.centrifugeId, locator.poolId, outboundBatch[locator.centrifugeId][locator.poolId]);
             delete outboundBatch[locator.centrifugeId][locator.poolId];
-            delete batchGasLimit[locator.centrifugeId][locator.poolId];
         }
 
         delete batchLocators;
@@ -341,38 +339,26 @@ contract Gateway is Auth, IGateway, Recoverable {
     //----------------------------------------------------------------------------------------------
 
     /// @inheritdoc IGateway
-    function estimate(uint16 centrifugeId, bytes calldata payload)
+    function estimate(uint16 centrifugeId, bytes calldata batch)
         external
         view
         returns (uint256[] memory perAdapter, uint256 total)
     {
-        bytes memory proof = processor.createMessageProof(payload);
-
-        uint256 proofGasLimit = gasService.gasLimit(centrifugeId, proof);
-
-        uint256 messageGasLimit = 0;
-        for (uint256 pos; pos < payload.length;) {
-            bytes calldata inner = payload[pos:payload.length];
-            messageGasLimit += gasService.gasLimit(centrifugeId, inner);
-            pos += processor.messageLength(inner);
-        }
-
+        bytes memory proof = processor.createMessageProof(batch);
         perAdapter = new uint256[](adapters[centrifugeId].length);
 
         uint256 adaptersCount = adapters[centrifugeId].length;
         for (uint256 i; i < adaptersCount; i++) {
-            uint256 gasLimit_ = i == PRIMARY_ADAPTER_ID - 1 ? messageGasLimit : proofGasLimit;
-            bytes memory message = i == PRIMARY_ADAPTER_ID - 1 ? payload : proof;
-            uint256 estimated = IAdapter(adapters[centrifugeId][i]).estimate(centrifugeId, message, gasLimit_);
+            bytes memory message = i == PRIMARY_ADAPTER_ID - 1 ? batch : proof;
+            uint256 estimated = IAdapter(adapters[centrifugeId][i]).estimate(centrifugeId, message, gasLimit);
             perAdapter[i] = estimated;
             total += estimated;
         }
     }
 
     /// @inheritdoc IGateway
-    function quorum(uint16 centrifugeId) external view returns (uint8) {
-        Adapter memory adapter = _activeAdapters[centrifugeId][adapters[centrifugeId][0]];
-        return adapter.quorum;
+    function quorum(uint16 centrifugeId) public view returns (uint8) {
+        return uint8(adapters[centrifugeId].length);
     }
 
     /// @inheritdoc IGateway
@@ -384,10 +370,5 @@ contract Gateway is Auth, IGateway, Recoverable {
     /// @inheritdoc IGateway
     function votes(uint16 centrifugeId, bytes32 batchHash) external view returns (uint16[MAX_ADAPTER_COUNT] memory) {
         return inboundBatch[centrifugeId][batchHash].votes;
-    }
-
-    /// @inheritdoc IGateway
-    function adapterCount(uint16 centrifugeId) external view returns (uint256) {
-        return adapters[centrifugeId].length;
     }
 }
