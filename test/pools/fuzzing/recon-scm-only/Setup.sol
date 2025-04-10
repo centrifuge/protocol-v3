@@ -47,7 +47,9 @@ import {PoolManager} from "src/vaults/PoolManager.sol";
 
 
 contract MockHubRegistry {
-    function currency(PoolId poolId) external view returns (AssetId) {}
+    function currency(PoolId poolId) external view returns (AssetId) {
+        return AssetId.wrap(123);
+    }
 }
 
 
@@ -66,6 +68,8 @@ abstract contract Setup is BaseSetup, ActorManager, AssetManager, Utils {
     IERC7726 valuation;
     PoolId poolId;
     ShareClassId scId;
+    AssetId depositAssetId = AssetId.wrap(123);
+    AssetId payoutAssetId = AssetId.wrap(123);
 
     modifier stateless {
         _;

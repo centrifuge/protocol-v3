@@ -38,21 +38,19 @@ abstract contract TargetFunctions is
     Properties
 {
 
-
     function shareClassManager_addShareClass(PoolId poolId, string memory name, string memory symbol, bytes32 salt, bytes memory ) public asAdmin {
         shareClassManager.addShareClass(poolId, name, symbol, salt, bytes(""));
     }
 
-    function shareClassManager_approveDeposits(uint128 maxApproval, AssetId paymentAssetId) public asAdmin {
-        shareClassManager.approveDeposits(poolId, scId, maxApproval, paymentAssetId, valuation);
+    function shareClassManager_approveDeposits(uint128 maxApproval) public asAdmin {
+        shareClassManager.approveDeposits(poolId, scId, maxApproval, payoutAssetId, valuation);
     }
 
-    function shareClassManager_approveRedeems(uint128 maxApproval, AssetId payoutAssetId) public asAdmin {
+    function shareClassManager_approveRedeems(uint128 maxApproval) public asAdmin {
         shareClassManager.approveRedeems(poolId, scId, maxApproval, payoutAssetId);
     }
 
-    function shareClassManager_cancelDepositRequest(AssetId depositAssetId) public asAdmin {
-
+    function shareClassManager_cancelDepositRequest() public asAdmin {
         shareClassManager.cancelDepositRequest(poolId, scId, bytes32(uint256(uint160(_getActor()))), depositAssetId);
     }
 
@@ -60,11 +58,11 @@ abstract contract TargetFunctions is
         shareClassManager.cancelRedeemRequest(poolId, scId, bytes32(uint256(uint160(_getActor()))), payoutAssetId);
     }
 
-    function shareClassManager_claimDeposit(AssetId depositAssetId) public asAdmin {
+    function shareClassManager_claimDeposit() public asAdmin {
         shareClassManager.claimDeposit(poolId, scId, bytes32(uint256(uint160(_getActor()))), depositAssetId);
     }
 
-    function shareClassManager_claimDepositUntilEpoch(AssetId depositAssetId, uint32 endEpochId) public asAdmin {
+    function shareClassManager_claimDepositUntilEpoch(uint32 endEpochId) public asAdmin {
         shareClassManager.claimDepositUntilEpoch(poolId, scId, bytes32(uint256(uint160(_getActor()))), depositAssetId, endEpochId);
     }
 
@@ -92,11 +90,11 @@ abstract contract TargetFunctions is
         shareClassManager.increaseShareClassIssuance(poolId, scId, navPerShare, amount);
     }
 
-    function shareClassManager_issueShares(AssetId depositAssetId, D18 navPerShare) public asAdmin {
+    function shareClassManager_issueShares(D18 navPerShare) public asAdmin {
         shareClassManager.issueShares(poolId, scId, depositAssetId, navPerShare);
     }
 
-    function shareClassManager_issueSharesUntilEpoch(AssetId depositAssetId, D18 navPerShare, uint32 endEpochId) public asAdmin {
+    function shareClassManager_issueSharesUntilEpoch(D18 navPerShare, uint32 endEpochId) public asAdmin {
         shareClassManager.issueSharesUntilEpoch(poolId, scId, depositAssetId, navPerShare, endEpochId);
     }
 
@@ -104,7 +102,7 @@ abstract contract TargetFunctions is
         shareClassManager.rely(user);
     }
 
-    function shareClassManager_requestDeposit(uint128 amount, AssetId depositAssetId) public asAdmin {
+    function shareClassManager_requestDeposit(uint128 amount) public asAdmin {
         shareClassManager.requestDeposit(poolId, scId, amount, bytes32(uint256(uint160(_getActor()))), depositAssetId);
     }
 
