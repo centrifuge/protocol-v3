@@ -15,7 +15,7 @@ import {Properties} from "./Properties.sol";
 
 import {IHubRegistry} from "src/hub/interfaces/IHubRegistry.sol";
 import {IAccounting} from "src/hub/interfaces/IAccounting.sol";
-import {IHoldings} from "src/hub/interfaces/IHoldings.sol";
+import {IHoldings, Holding} from "src/hub/interfaces/IHoldings.sol";
 import {IMessageSender} from "src/common/interfaces/IMessageSender.sol";
 import {IAsyncRequests} from "src/vaults/interfaces/investments/IAsyncRequests.sol";
 import {IShareClassManager} from "src/hub/interfaces/IShareClassManager.sol";
@@ -33,98 +33,142 @@ import {MockAdapter} from "test/common/mocks/MockAdapter.sol";
 import {MockGasService} from "test/common/mocks/MockGasService.sol";
 import {PoolManager} from "src/vaults/PoolManager.sol";
 
+import {ShareClassManagerTargets} from "./targets/ShareClassManagerTargets.sol";
+import {MockValuation} from "./Setup.sol";
+
 abstract contract TargetFunctions is
-    BaseTargetFunctions,
-    Properties
+    ShareClassManagerTargets
 {
+
+    // Update valuation
+    function setMultiplier(uint256 val) public {
+        MockValuation(address(valuation)).setMultiplier(val);
+    }
 
     // TODO: We are the HUB NOW
     // NEED TO FUZZ AT A DIFFERENT LEVEL
+    function updateHolding() public {
 
-    function shareClassManager_addShareClass(string memory name, string memory symbol, bytes32 salt, bytes memory ) public asAdmin {
-        shareClassManager.addShareClass(poolId, name, symbol, salt, bytes(""));
+        // TODO: YIELD AND LOSSES
+        int128 diff = holdings.update(poolId, scId, depositAssetId);
+
+        _unlock();
+        if (diff > 0) {
+
+            yieldValue += diff;
+            depositValue += uint128(diff);
+            
+            accounting.addCredit(
+                GAIN_ACCOUNT, uint128(diff)
+            );
+            accounting.addDebit(
+                ASSET_ACCOUNT, uint128(diff)
+            );
+        } else if (diff < 0) {
+
+            lossValue += diff; // Loss value <= 0
+            depositValue -= uint256(int256(-diff)); // Negative
+
+            accounting.addCredit(
+                ASSET_ACCOUNT, uint128(uint256(-int256(diff)))
+            );
+            accounting.addDebit(
+                LOSS_ACCOUNT, uint128(uint256(-int256(diff)))
+            );
+        }
+        _lock();
     }
 
-    function shareClassManager_approveDeposits(uint128 maxApproval) public asAdmin {
-        (uint128 amt, ) = shareClassManager.approveDeposits(poolId, scId, maxApproval, payoutAssetId, valuation);
-        totalApprovedDeposits += amt;
+    // TODO: How would this work here?
+    function approveDeposits(uint128 maxApproval)
+        public
+    {
+        require(maxApproval < 1e26); // Cap to more realistic values
+
+        (uint128 approvedAssetAmount,) = /// Some amount at time X (dust) and new amounts at time closer to now
+            shareClassManager.approveDeposits(poolId, scId, maxApproval, depositAssetId, valuation);
+            
+        /// @audit there is value that is tracked in SCM that is not added to HOLDINGS
+        uint128 valueChange = holdings.increase(poolId, scId, depositAssetId, valuation, approvedAssetAmount);
+
+        // TODO: Value increase
+        depositAmt += approvedAssetAmount;
+        depositValue += valueChange;
+
+        _unlock();
+        accounting.addCredit(
+            EQUITY_ACCOUNT, valueChange
+        );
+        accounting.addDebit(
+            ASSET_ACCOUNT, valueChange
+        );
+        _lock();
     }
 
-    function shareClassManager_approveRedeems(uint128 maxApproval) public asAdmin {
-        shareClassManager.approveRedeems(poolId, scId, maxApproval, payoutAssetId);
+    // TODO: How would this work here? | // TODO: Nav per share modelling
+    function revokeShares(D18 navPerShare)
+        public
+    {
+        (uint128 payoutAssetAmount,) = shareClassManager.revokeShares(poolId, scId, payoutAssetId, navPerShare, valuation); /// @audit nav and valuation to be modelled
+
+        uint128 valueChange = holdings.decrease(poolId, scId, payoutAssetId, valuation, payoutAssetAmount);
+
+        // TODO: Overflow Properties here as well
+        lte(payoutAssetAmount, depositAmt, "payoutAssetAmount > depositAmt");
+        lte(valueChange, depositValue, "valueChange > depositValue");
+            
+        depositAmt -= payoutAssetAmount;
+        depositValue -= valueChange;
+
+        
+        _unlock();
+        accounting.addCredit(
+            ASSET_ACCOUNT, valueChange
+        );
+        accounting.addDebit(
+            EQUITY_ACCOUNT, valueChange
+        );
+        _lock();
+
+        
+        
     }
 
-    function shareClassManager_cancelDepositRequest() public asAdmin {
-        shareClassManager.cancelDepositRequest(poolId, scId, bytes32(uint256(uint160(_getActor()))), depositAssetId);
+
+    function _unlock() internal {
+        try accounting.unlock(poolId) {} catch { t(false, "Account didn't unlock");}
+    }
+    function _lock() internal {
+        try accounting.lock() {} catch { t(false, "Account didn't lock correctly"); }
     }
 
-    function shareClassManager_cancelRedeemRequest() public asAdmin {
-        shareClassManager.cancelRedeemRequest(poolId, scId, bytes32(uint256(uint160(_getActor()))), payoutAssetId);
-    }
+    // Put rest of state exploration for `shareClassManager`
+    
+    // AFTER
+    // function updateHoldingAmount(
+    //     PoolId poolId,
+    //     ShareClassId scId,
+    //     AssetId assetId,
+    //     uint128 amount,
+    //     D18 pricePerUnit,
+    //     bool isIncrease,
+    //     JournalEntry[] memory debits,
+    //     JournalEntry[] memory credits
+    // ) public auth {
+    //     accounting.unlock(poolId);
+    //     address poolCurrency = hubRegistry.currency(poolId).addr();
+    //     transientValuation.setPrice(assetId.addr(), poolCurrency, pricePerUnit);
+    //     uint128 valueChange = transientValuation.getQuote(amount, assetId.addr(), poolCurrency).toUint128();
+    //     /// @audit the update here desynchs the holdings as the holdings remain unchanged, but we add values
+    //     (uint128 debited, uint128 credited) = _updateJournal(debits, credits);
+    //     uint128 debitValueLeft = valueChange - debited;
+    //     uint128 creditValueLeft = valueChange - credited;
 
-    function shareClassManager_claimDeposit() public asAdmin {
-        shareClassManager.claimDeposit(poolId, scId, bytes32(uint256(uint160(_getActor()))), depositAssetId);
-    }
-
-    function shareClassManager_claimDepositUntilEpoch(uint32 endEpochId) public asAdmin {
-        shareClassManager.claimDepositUntilEpoch(poolId, scId, bytes32(uint256(uint160(_getActor()))), depositAssetId, endEpochId);
-    }
-
-    function shareClassManager_claimRedeem() public asAdmin {
-        shareClassManager.claimRedeem(poolId, scId, bytes32(uint256(uint160(_getActor()))), payoutAssetId);
-    }
-
-    function shareClassManager_claimRedeemUntilEpoch(uint32 endEpochId) public asAdmin {
-        shareClassManager.claimRedeemUntilEpoch(poolId, scId, bytes32(uint256(uint160(_getActor()))), payoutAssetId, endEpochId);
-    }
-
-    function shareClassManager_decreaseShareClassIssuance(D18 navPerShare, uint128 amount) public asAdmin {
-        shareClassManager.decreaseShareClassIssuance(poolId, scId, navPerShare, amount);
-    }
-
-    function shareClassManager_deny(address user) public asAdmin {
-        shareClassManager.deny(user);
-    }
-
-    function shareClassManager_file(bytes32 what, address data) public asAdmin {
-        shareClassManager.file(what, data);
-    }
-
-    function shareClassManager_increaseShareClassIssuance(D18 navPerShare, uint128 amount) public asAdmin {
-        shareClassManager.increaseShareClassIssuance(poolId, scId, navPerShare, amount);
-    }
-
-    function shareClassManager_issueShares(D18 navPerShare) public asAdmin {
-        shareClassManager.issueShares(poolId, scId, depositAssetId, navPerShare);
-    }
-
-    function shareClassManager_issueSharesUntilEpoch(D18 navPerShare, uint32 endEpochId) public asAdmin {
-        shareClassManager.issueSharesUntilEpoch(poolId, scId, depositAssetId, navPerShare, endEpochId);
-    }
-
-    function shareClassManager_rely(address user) public asAdmin {
-        shareClassManager.rely(user);
-    }
-
-    function shareClassManager_requestDeposit(uint128 amount) public asAdmin {
-        shareClassManager.requestDeposit(poolId, scId, amount, bytes32(uint256(uint160(_getActor()))), depositAssetId);
-    }
-
-    function shareClassManager_requestRedeem(uint128 amount) public asAdmin {
-        shareClassManager.requestRedeem(poolId, scId, amount, bytes32(uint256(uint160(_getActor()))), payoutAssetId);
-    }
-
-    function shareClassManager_revokeShares(D18 navPerShare) public asAdmin {
-        shareClassManager.revokeShares(poolId, scId, payoutAssetId, navPerShare, valuation);
-    }
-
-    function shareClassManager_revokeSharesUntilEpoch(D18 navPerShare, uint32 endEpochId) public asAdmin {
-        shareClassManager.revokeSharesUntilEpoch(poolId, scId, payoutAssetId, navPerShare, valuation, endEpochId);
-    }
-
-    function shareClassManager_updateMetadata(string memory name, string memory symbol, bytes32 salt, bytes memory ) public asAdmin {
-        shareClassManager.updateMetadata(poolId, scId, name, symbol, salt, bytes(""));
-    }
+    //     _updateHoldingWithPartialDebitsAndCredits(
+    //         poolId, scId, assetId, amount, isIncrease, debitValueLeft, creditValueLeft
+    //     );
+    //     accounting.lock();
+    // }
 
     /// AUTO GENERATED TARGET FUNCTIONS - WARNING: DO NOT DELETE OR MODIFY THIS LINE ///
 }

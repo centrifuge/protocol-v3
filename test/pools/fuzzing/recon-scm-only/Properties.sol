@@ -6,45 +6,52 @@ import {BeforeAfter, OpType} from "./BeforeAfter.sol";
 
 import {console2} from "forge-std/console2.sol";
 
+
+import {Holding} from "src/hub/interfaces/IHoldings.sol";
+
+
+
 abstract contract Properties is BeforeAfter, Asserts {
 
-    // Other stuff
-    // epochAmounts_.depositApproved can only increase
+    // Holdings property should be the following:
+    // Sum of Deposit - Sum of withdrawals = 
+    // Sum of ASSETS
+    function property_trackingOfAmounts() public {
+        (uint128 amt, ) = _getAmountAndValue();
+        eq(amt, depositAmt, "property_trackingOfAmounts");
+    }
+    function property_trackingOfValues() public {
+        (, uint128 value) = _getAmountAndValue();
+        eq(value, depositValue, "property_trackingOfValues");
+    }
 
-
-    // Sum of requests
-    // TODO: Come back to this
-    // function property_sum_of_requests() public {
-    //     /// Pending deposit - Approved Asset Amount
-    //     /// epochAmounts_.depositApproved = approvedAssetAmount;
-    //     // NOTE: I'm using same values for all
-    //     // pendingDeposit -= approvedAssetAmount
-
-
-    //     // TODO: Grab `epochAmounts_.depositApproved` for each epoch to determine the amount processed
-    //     // This should be equal to `totalApprovedDeposits`
-
-    //     // TODO: SCM Queuein needs to be tested differently
-
-
-    //     uint256 pendingDeposit = shareClassManager.pendingDeposit(scId, depositAssetId);
-    //     (uint128 pending, uint32 lastUpdate) = shareClassManager.depositRequest(scId, depositAssetId, bytes32(uint256(uint160(_getActor()))));
-
-    //     (bool isCancelling, uint128 queued) = shareClassManager.queuedDepositRequest(scId, depositAssetId, bytes32(uint256(uint160(_getActor()))));
-
-    //     eq(totalApprovedDeposits + pendingDeposit, pending, "property_sum_of_requests");
-    // }
-
+    function _getAmountAndValue() internal view returns (uint128, uint128) {
+        (uint128 assetAmount, uint128 assetAmountValue, ,) = holdings.holding(poolId, scId, payoutAssetId);
+        return (assetAmount, assetAmountValue);
+    }
     
+    // SUM OF VALUE
 
-    // Sum of pending
+    /// FOUNDATIONAL PROPERTIES
+    // Soundness
+    function property_sound_loss() public {
+        t(accounting.accountValue(poolId, LOSS_ACCOUNT) <= 0, "Loss is always negative");
+    }
+    function property_sound_gain() public {
+        t(accounting.accountValue(poolId, GAIN_ACCOUNT) >= 0, "Gain is always positive");
+    }
 
-    // Sum of received?
+    /// SUM of accounting
+    function property_sum_of_losses() public {
+        t(lossValue == int256(accounting.accountValue(poolId, LOSS_ACCOUNT)), "property_sum_of_losses");
+    }
 
+    function property_sum_of_gains() public {
+        t(yieldValue == int256(accounting.accountValue(poolId, GAIN_ACCOUNT)), "property_sum_of_gains");
+    }
 
-
-    // Current NAV (To compute values)
-    // Change NAV (To compute deltas)
-
-    // TODO: Holdings??
+    // Function global solvency property
+    // Equity | Assets = Either Yield or Loss
+    // Equity = Assets + Yield - Loss
+    // But not just as accounts, more
 }

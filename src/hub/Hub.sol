@@ -207,6 +207,7 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler {
 
         (uint128 approvedAssetAmount,) = /// Some amount at time X (dust) and new amounts at time closer to now
             shareClassManager.approveDeposits(unlockedPoolId, scId, maxApproval, paymentAssetId, valuation);
+            
         /// @audit there is value that is tracked in SCM that is not added to HOLDINGS
         uint128 valueChange = holdings.increase(unlockedPoolId, scId, paymentAssetId, valuation, approvedAssetAmount);
 
@@ -572,7 +573,7 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler {
         AccountType creditAccountType = isLiability ? AccountType.Liability : AccountType.Equity;
 
         if (isIncrease) {
-            holdings.increase(poolId, scId, assetId, transientValuation, amount);
+            holdings.increase(poolId, scId, assetId, transientValuation, amount); /// @audit I think this breaks the property
             accounting.addDebit(holdings.accountId(poolId, scId, assetId, uint8(debitAccountType)), debitValue);
             accounting.addCredit(holdings.accountId(poolId, scId, assetId, uint8(creditAccountType)), creditValue);
         } else {

@@ -57,7 +57,7 @@ contract MockHubRegistry {
 
 contract MockValuation {
 
-    uint256 MULTIPLIER; // In 100
+    uint256 MULTIPLIER; // In 100 | // TODO: You may want to always revert here
     
     function setMultiplier(uint256 multiplier) external {
         require(multiplier < 10_000);
@@ -96,6 +96,13 @@ abstract contract Setup is BaseSetup, ActorManager, AssetManager, Utils {
     AccountId EQUITY_ACCOUNT;
     AccountId LOSS_ACCOUNT;
     AccountId GAIN_ACCOUNT;
+
+    uint256 depositAmt;
+    uint256 depositValue;
+    
+    // These can go either side?
+    int256 yieldValue;
+    int256 lossValue;
 
 
     /// === Setup === ///
