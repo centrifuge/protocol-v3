@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: BUSL-1.1
-pragma solidity 0.8.28;
+// SPDX-License-Identifier: AGPL-3.0-only
+pragma solidity ^0.8.0;
 
 import {ERC20} from "src/misc/ERC20.sol";
 
@@ -49,8 +49,6 @@ abstract contract SharedStorage {
     // NOTE: TODO
     // ** INCOMPLETE - Deployment, Setup and Cycling of Assets, Shares, Pools and Vaults **/
     // Step 1
-    // Make Currency
-    ERC20[] allTokens;
     /// TODO: Consider dropping
     mapping(address => uint128) assetAddressToAssetId;
     mapping(uint128 => address) assetIdToAssetAddress;
