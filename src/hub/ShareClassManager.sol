@@ -7,6 +7,7 @@ import {IERC7726} from "src/misc/interfaces/IERC7726.sol";
 import {MathLib} from "src/misc/libraries/MathLib.sol";
 import {CastLib} from "src/misc/libraries/CastLib.sol";
 import {BytesLib} from "src/misc/libraries/BytesLib.sol";
+import {ConversionLib} from "src/misc/libraries/ConversionLib.sol";
 
 import {PoolId} from "src/common/types/PoolId.sol";
 import {AssetId} from "src/common/types/AssetId.sol";
@@ -15,9 +16,9 @@ import {ShareClassId, newShareClassId} from "src/common/types/ShareClassId.sol";
 import {IHubRegistry} from "src/hub/interfaces/IHubRegistry.sol";
 import {
     IShareClassManager,
-    EpochAmounts,
+    EpochInvestAmounts,
+    EpochRedeemAmounts,
     UserOrder,
-    EpochPointers,
     ShareClassMetadata,
     ShareClassMetrics,
     QueuedOrder,
@@ -32,20 +33,28 @@ contract ShareClassManager is Auth, IShareClassManager {
     uint32 constant META_NAME_LENGTH = 128;
     uint32 constant META_SYMBOL_LENGTH = 32;
 
-    /// Storage
-    uint32 internal transient _epochIncrement;
     IHubRegistry public hubRegistry;
+
     mapping(bytes32 salt => bool) public salts;
-    mapping(PoolId poolId => uint32) public epochId;
+    mapping(ShareClassId scId => mapping(AssetId assetId => uint32)) public investEpochId;
+    mapping(ShareClassId scId => mapping(AssetId assetId => uint32)) public issueEpochId;
+    mapping(ShareClassId scId => mapping(AssetId assetId => uint32)) public redeemEpochId;
+    mapping(ShareClassId scId => mapping(AssetId assetId => uint32)) public revokeEpochId;
+
+    mapping(ShareClassId scId => mapping(AssetId assetId => mapping(uint32 epochId_ => EpochInvestAmounts epoch)))
+        public epochInvestAmounts;
+    mapping(ShareClassId scId => mapping(AssetId assetId => mapping(uint32 epochId_ => EpochRedeemAmounts epoch)))
+        public epochRedeemAmounts;
+
     mapping(PoolId poolId => uint32) public shareClassCount;
+    // TODO: Make public in IShareClassManager interface?
     mapping(ShareClassId scId => ShareClassMetrics) public metrics;
     mapping(ShareClassId scId => ShareClassMetadata) public metadata;
     mapping(PoolId poolId => mapping(ShareClassId => bool)) public shareClassIds;
-    mapping(ShareClassId scId => mapping(AssetId assetId => EpochPointers)) public epochPointers;
+
     mapping(ShareClassId scId => mapping(AssetId payoutAssetId => uint128 pending)) public pendingRedeem;
     mapping(ShareClassId scId => mapping(AssetId paymentAssetId => uint128 pending)) public pendingDeposit;
-    mapping(ShareClassId scId => mapping(AssetId assetId => mapping(uint32 epochId_ => EpochAmounts epoch))) public
-        epochAmounts;
+
     mapping(ShareClassId scId => mapping(AssetId payoutAssetId => mapping(bytes32 investor => UserOrder pending)))
         public redeemRequest;
     mapping(ShareClassId scId => mapping(AssetId paymentAssetId => mapping(bytes32 investor => UserOrder pending)))
@@ -75,11 +84,6 @@ contract ShareClassManager is Auth, IShareClassManager {
 
         uint32 index = ++shareClassCount[poolId];
         shareClassIds[poolId][scId_] = true;
-
-        // Initialize epoch with 1 iff first class was added
-        if (index == 1) {
-            epochId[poolId] = 1;
-        }
 
         _updateMetadata(scId_, name, symbol, salt);
 
@@ -137,346 +141,336 @@ contract ShareClassManager is Auth, IShareClassManager {
     function approveDeposits(
         PoolId poolId,
         ShareClassId scId_,
-        uint128 maxApproval,
-        AssetId paymentAssetId,
-        IERC7726 valuation
-    ) external auth returns (uint128 approvedAssetAmount, uint128 approvedPoolAmount) {
+        uint128 approvedAssetAmount,
+        AssetId depositAssetId,
+        D18 pricePoolPerAsset
+    ) external auth returns (uint128 pendingAssetAmount, uint128 approvedPoolAmount) {
         require(exists(poolId, scId_), ShareClassNotFound());
-
-        // Advance epochId if it has not been advanced within this transaction (e.g. in case of multiCall context)
-        uint32 approvalEpochId = _advanceEpoch(poolId);
-
-        // Block approvals for the same asset in the same epoch
-        require(epochPointers[scId_][paymentAssetId].latestDepositApproval != approvalEpochId, AlreadyApproved());
+        uint32 epochId = investEpochId[scId_][depositAssetId] + 1;
 
         // Limit in case approved > pending due to race condition of FM approval and async incoming requests
-        uint128 _pendingDeposit = pendingDeposit[scId_][paymentAssetId];
-        approvedAssetAmount = maxApproval.min(_pendingDeposit).toUint128();
+        pendingAssetAmount = pendingDeposit[scId_][depositAssetId];
+        require(approvedAssetAmount <= pendingAssetAmount, NotEnoughPending());
         require(approvedAssetAmount > 0, ZeroApprovalAmount());
 
-        // Increase approved
-        address poolCurrency = hubRegistry.currency(poolId).addr();
-        approvedPoolAmount =
-            (IERC7726(valuation).getQuote(approvedAssetAmount, paymentAssetId.addr(), poolCurrency)).toUint128();
-
         // Update epoch data
-        EpochAmounts storage epochAmounts_ = epochAmounts[scId_][paymentAssetId][approvalEpochId];
-        epochAmounts_.depositApproved = approvedAssetAmount;
-        epochAmounts_.depositPool = approvedPoolAmount;
-        epochAmounts_.depositPending = _pendingDeposit;
-        epochPointers[scId_][paymentAssetId].latestDepositApproval = approvalEpochId;
+        EpochInvestAmounts storage epochAmounts = epochInvestAmounts[scId_][depositAssetId][epochId];
+        epochAmounts.approvedAssetAmount = approvedAssetAmount;
+        epochAmounts.approvedPoolAmount = ConversionLib.convertWithPrice(
+            approvedAssetAmount, hubRegistry.decimals(depositAssetId), hubRegistry.decimals(poolId), pricePoolPerAsset
+        ).toUint128();
+        epochAmounts.pendingAssetAmount = pendingAssetAmount;
+        epochAmounts.pricePoolPerAsset = pricePoolPerAsset;
 
         // Reduce pending
-        pendingDeposit[scId_][paymentAssetId] -= approvedAssetAmount;
-        _pendingDeposit -= approvedAssetAmount;
+        pendingDeposit[scId_][depositAssetId] -= approvedAssetAmount;
+        investEpochId[scId_][depositAssetId] = epochId;
+        pendingAssetAmount -= approvedAssetAmount;
 
         emit ApproveDeposits(
-            poolId, scId_, approvalEpochId, paymentAssetId, approvedPoolAmount, approvedAssetAmount, _pendingDeposit
+            poolId, scId_, epochId, depositAssetId, approvedPoolAmount, approvedAssetAmount, pendingAssetAmount
         );
+
+        investEpochId[scId_][depositAssetId] = epochId;
+        emit NewInvestEpoch(poolId, depositAssetId, epochId);
     }
 
     /// @inheritdoc IShareClassManager
-    function approveRedeems(PoolId poolId, ShareClassId scId_, uint128 maxApproval, AssetId payoutAssetId)
-        external
-        auth
-        returns (uint128 approvedShareAmount, uint128 pendingShareAmount)
-    {
+    function approveRedeems(
+        PoolId poolId,
+        ShareClassId scId_,
+        uint128 approvedShareAmount,
+        AssetId payoutAssetId,
+        D18 pricePoolPerAsset
+    ) external auth returns (uint128 pendingShareAmount) {
         require(exists(poolId, scId_), ShareClassNotFound());
-
-        // Advance epochId if it has not been advanced within this transaction (e.g. in case of multiCall context)
-        uint32 approvalEpochId = _advanceEpoch(poolId);
-
-        // Block approvals for the same asset in the same epoch
-        require(epochPointers[scId_][payoutAssetId].latestRedeemApproval != approvalEpochId, AlreadyApproved());
-
+        uint32 epochId = redeemEpochId[scId_][payoutAssetId] + 1;
         // Limit in case approved > pending due to race condition of FM approval and async incoming requests
         pendingShareAmount = pendingRedeem[scId_][payoutAssetId];
-        approvedShareAmount = maxApproval.min(pendingShareAmount).toUint128();
+        require(approvedShareAmount <= pendingShareAmount, NotEnoughPending());
         require(approvedShareAmount > 0, ZeroApprovalAmount());
 
         // Update epoch data
-        EpochAmounts storage epochAmounts_ = epochAmounts[scId_][payoutAssetId][approvalEpochId];
-        epochAmounts_.redeemApproved = approvedShareAmount;
-        epochAmounts_.redeemPending = pendingShareAmount;
+        EpochRedeemAmounts storage epochAmounts = epochRedeemAmounts[scId_][payoutAssetId][epochId];
+        epochAmounts.approvedShareAmount = approvedShareAmount;
+        epochAmounts.pendingShareAmount = pendingShareAmount;
+        epochAmounts.pricePoolPerAsset = pricePoolPerAsset;
 
         // Reduce pending
         pendingRedeem[scId_][payoutAssetId] -= approvedShareAmount;
         pendingShareAmount -= approvedShareAmount;
+        emit ApproveRedeems(poolId, scId_, epochId, payoutAssetId, approvedShareAmount, pendingShareAmount);
 
-        epochPointers[scId_][payoutAssetId].latestRedeemApproval = approvalEpochId;
-
-        emit ApproveRedeems(poolId, scId_, approvalEpochId, payoutAssetId, approvedShareAmount, pendingShareAmount);
+        redeemEpochId[scId_][payoutAssetId] = epochId;
+        emit NewRedeemEpoch(poolId, payoutAssetId, epochId);
     }
 
     /// @inheritdoc IShareClassManager
-    function issueShares(PoolId poolId, ShareClassId scId_, AssetId depositAssetId, D18 navPerShare) external auth {
-        EpochPointers storage epochPointers_ = epochPointers[scId_][depositAssetId];
-        require(epochPointers_.latestDepositApproval > epochPointers_.latestIssuance, ApprovalRequired());
-
-        issueSharesUntilEpoch(poolId, scId_, depositAssetId, navPerShare, epochPointers_.latestDepositApproval);
-    }
-
-    /// @inheritdoc IShareClassManager
-    function issueSharesUntilEpoch(
-        PoolId poolId,
-        ShareClassId scId_,
-        AssetId depositAssetId,
-        D18 navPerShare,
-        uint32 endEpochId
-    ) public auth {
-        require(exists(poolId, scId_), ShareClassNotFound());
-        require(endEpochId < epochId[poolId], EpochNotFound());
-
-        ShareClassMetrics memory m = metrics[scId_];
-        (uint128 totalIssuance, D18 navPerShare_) = (m.totalIssuance, m.navPerShare);
-
-        // First issuance is epoch 1 due to also initializing epochs with 1
-        // Subsequent issuances equal latest pointer plus one
-        uint32 startEpochId = epochPointers[scId_][depositAssetId].latestIssuance + 1;
-
-        for (uint32 epochId_ = startEpochId; epochId_ <= endEpochId; epochId_++) {
-            // Skip redeem epochs
-            if (epochAmounts[scId_][depositAssetId][epochId_].depositApproved == 0) {
-                continue;
-            }
-
-            uint128 issuedShareAmount =
-                navPerShare.reciprocalMulUint128(epochAmounts[scId_][depositAssetId][epochId_].depositPool);
-            epochAmounts[scId_][depositAssetId][epochId_].depositShares = issuedShareAmount;
-            totalIssuance += issuedShareAmount;
-            uint128 nav = navPerShare.mulUint128(totalIssuance);
-
-            emit IssueShares(poolId, scId_, epochId_, nav, navPerShare, totalIssuance, issuedShareAmount);
-        }
-
-        epochPointers[scId_][depositAssetId].latestIssuance = endEpochId;
-        metrics[scId_] = ShareClassMetrics(totalIssuance, navPerShare_);
-    }
-
-    /// @inheritdoc IShareClassManager
-    function revokeShares(PoolId poolId, ShareClassId scId_, AssetId payoutAssetId, D18 navPerShare, IERC7726 valuation)
-        external
+    function issueShares(PoolId poolId, ShareClassId scId_, AssetId depositAssetId, D18 navPoolPerShare)
+        public
         auth
-        returns (uint128 payoutAssetAmount, uint128 payoutPoolAmount)
+        returns (uint128 issuedShareAmount, uint128 paymentAssetAmount, uint128 paymentPoolAmount)
     {
-        EpochPointers storage epochPointers_ = epochPointers[scId_][payoutAssetId];
-        require(epochPointers_.latestRedeemApproval > epochPointers_.latestRevocation, ApprovalRequired());
+        require(exists(poolId, scId_), ShareClassNotFound());
+        uint32 epochId = issueEpochId[scId_][depositAssetId] + 1;
+        require(epochId <= investEpochId[scId_][depositAssetId], EpochNotFound());
 
-        return revokeSharesUntilEpoch(
-            poolId, scId_, payoutAssetId, navPerShare, valuation, epochPointers_.latestRedeemApproval
-        );
+        EpochInvestAmounts storage epochAmounts = epochInvestAmounts[scId_][depositAssetId][epochId];
+        epochAmounts.navPoolPerShare = navPoolPerShare;
+
+        issuedShareAmount = ConversionLib.convertWithPrice(
+            epochAmounts.approvedAssetAmount,
+            hubRegistry.decimals(depositAssetId),
+            hubRegistry.decimals(poolId),
+            _navAssetPerShare(epochAmounts)
+        ).toUint128();
+        metrics[scId_].totalIssuance += issuedShareAmount;
+        epochAmounts.issuedAt = block.timestamp.toUint64();
+        issueEpochId[scId_][depositAssetId] = epochId;
+
+        paymentAssetAmount = epochAmounts.approvedAssetAmount;
+        paymentPoolAmount = epochAmounts.approvedPoolAmount;
+
+        emit IssueShares(poolId, scId_, epochId, navPoolPerShare, _navAssetPerShare(epochAmounts), issuedShareAmount);
     }
 
     /// @inheritdoc IShareClassManager
-    function revokeSharesUntilEpoch(
-        PoolId poolId,
-        ShareClassId scId_,
-        AssetId payoutAssetId,
-        D18 navPerShare,
-        IERC7726 valuation,
-        uint32 endEpochId
-    ) public auth returns (uint128 payoutAssetAmount, uint128 payoutPoolAmount) {
+    function revokeShares(PoolId poolId, ShareClassId scId_, AssetId paymentAssetId, D18 navPoolPerShare)
+        public
+        auth
+        returns (uint128 revokedShareAmount, uint128 payoutAssetAmount, uint128 payoutPoolAmount)
+    {
         require(exists(poolId, scId_), ShareClassNotFound());
-        require(endEpochId < epochId[poolId], EpochNotFound());
+        uint32 epochId = revokeEpochId[scId_][paymentAssetId] + 1;
+        require(epochId <= redeemEpochId[scId_][paymentAssetId], EpochNotFound());
 
-        ShareClassMetrics storage metrics_ = metrics[scId_];
-        uint128 totalIssuance = metrics_.totalIssuance;
-        address poolCurrency = hubRegistry.currency(poolId).addr();
+        EpochRedeemAmounts storage epochAmounts = epochRedeemAmounts[scId_][paymentAssetId][epochId];
+        epochAmounts.navPoolPerShare = navPoolPerShare;
 
-        // First issuance is epoch 1 due to also initializing epochs with 1
-        // Subsequent issuances equal latest pointer plus one
-        uint32 startEpochId = epochPointers[scId_][payoutAssetId].latestRevocation + 1;
+        require(epochAmounts.approvedShareAmount <= metrics[scId_].totalIssuance, RevokeMoreThanIssued());
 
-        for (uint32 epochId_ = startEpochId; epochId_ <= endEpochId; epochId_++) {
-            EpochAmounts storage epochAmounts_ = epochAmounts[scId_][payoutAssetId][epochId_];
+        payoutAssetAmount = ConversionLib.convertWithPrice(
+            epochAmounts.approvedShareAmount,
+            hubRegistry.decimals(poolId),
+            hubRegistry.decimals(paymentAssetId),
+            _navAssetPerShare(epochAmounts)
+        ).toUint128();
+        // NOTE: shares and pool currency have the same decimals - no conversion needed!
+        payoutPoolAmount = navPoolPerShare.mulUint128(epochAmounts.approvedShareAmount);
+        revokedShareAmount = epochAmounts.approvedShareAmount;
 
-            // Skip deposit epochs
-            if (epochAmounts_.redeemApproved == 0) {
-                continue;
-            }
+        metrics[scId_].totalIssuance -= epochAmounts.approvedShareAmount;
+        epochAmounts.payoutAssetAmount = payoutAssetAmount;
+        epochAmounts.revokedAt = block.timestamp.toUint64();
+        revokeEpochId[scId_][paymentAssetId] = epochId;
 
-            require(epochAmounts_.redeemApproved <= totalIssuance, RevokeMoreThanIssued());
-
-            payoutPoolAmount += _revokeEpochShares(
-                poolId,
-                scId_,
-                payoutAssetId,
-                navPerShare,
-                valuation,
-                poolCurrency,
-                epochAmounts_,
-                totalIssuance,
-                epochId_
-            );
-            payoutAssetAmount += epochAmounts_.redeemAssets;
-            totalIssuance -= epochAmounts_.redeemApproved;
-        }
-
-        epochPointers[scId_][payoutAssetId].latestRevocation = endEpochId;
-        metrics[scId_].totalIssuance = totalIssuance;
+        emit RevokeShares(
+            poolId,
+            scId_,
+            epochId,
+            navPoolPerShare,
+            _navAssetPerShare(epochAmounts),
+            epochAmounts.approvedShareAmount,
+            payoutAssetAmount,
+            payoutPoolAmount
+        );
     }
 
     /// @inheritdoc IShareClassManager
     function claimDeposit(PoolId poolId, ShareClassId scId_, bytes32 investor, AssetId depositAssetId)
-        external
+        public
         auth
-        returns (uint128 payoutShareAmount, uint128 paymentAssetAmount, uint128 cancelledAmount)
+        returns (
+            uint128 payoutShareAmount,
+            uint128 paymentAssetAmount,
+            uint128 cancelledAssetAmount,
+            bool canClaimAgain
+        )
     {
-        return claimDepositUntilEpoch(
-            poolId, scId_, investor, depositAssetId, epochPointers[scId_][depositAssetId].latestIssuance
-        );
-    }
-
-    /// @inheritdoc IShareClassManager
-    function claimDepositUntilEpoch(
-        PoolId poolId,
-        ShareClassId scId_,
-        bytes32 investor,
-        AssetId depositAssetId,
-        uint32 endEpochId
-    ) public auth returns (uint128 payoutShareAmount, uint128 paymentAssetAmount, uint128 cancelledAssetAmount) {
         require(exists(poolId, scId_), ShareClassNotFound());
-        require(endEpochId < epochId[poolId], EpochNotFound());
 
         UserOrder storage userOrder = depositRequest[scId_][depositAssetId][investor];
+        require(userOrder.lastUpdate <= issueEpochId[scId_][depositAssetId], IssuanceRequired());
+        uint32 epochId = userOrder.lastUpdate;
+        userOrder.lastUpdate += 1;
+        canClaimAgain = userOrder.lastUpdate == issueEpochId[scId_][depositAssetId];
 
-        for (uint32 epochId_ = userOrder.lastUpdate; epochId_ <= endEpochId; epochId_++) {
-            EpochAmounts storage epochAmounts_ = epochAmounts[scId_][depositAssetId][epochId_];
+        EpochInvestAmounts storage epochAmounts = epochInvestAmounts[scId_][depositAssetId][epochId];
 
-            // Skip redeem epochs
-            if (epochAmounts_.depositApproved == 0) {
-                continue;
-            }
-
-            // Skip epoch if user cannot claim
-            uint128 approvedAssetAmount =
-                userOrder.pending.mulDiv(epochAmounts_.depositApproved, epochAmounts_.depositPending).toUint128();
-            if (approvedAssetAmount == 0) {
-                emit ClaimDeposit(poolId, scId_, epochId_, investor, depositAssetId, 0, userOrder.pending, 0);
-                continue;
-            }
-
-            uint128 claimableShareAmount = uint256(approvedAssetAmount).mulDiv(
-                epochAmounts_.depositShares, epochAmounts_.depositApproved
-            ).toUint128();
-
-            // NOTE: During approvals, we reduce pendingDeposits by the approved asset amount. However, we only reduce
-            // the pending user amount if the claimable amount is non-zero.
-            //
-            // This extreme edge case has two implications:
-            //  1. The sum of pending user orders <= pendingDeposits (instead of equality)
-            //  2. The sum of claimable user amounts <= amount of minted share class tokens corresponding to the
-            // approved deposit asset amount (instead of equality).
-            //     I.e., it is possible for an epoch to have an excess of a share class tokens which cannot be
-            // claimed by anyone. This excess is at most n-1 share tokens for an epoch with n claimable users.
-            //
-            // The first implication can be switched to equality if we reduce the pending user amount independent of the
-            // claimable amount.
-            // However, in practice, it should be extremely unlikely to have users with non-zero pending but zero
-            // claimable for an epoch.
-            if (claimableShareAmount > 0) {
-                userOrder.pending -= approvedAssetAmount;
-                payoutShareAmount += claimableShareAmount;
-                paymentAssetAmount += approvedAssetAmount;
-            }
-
+        if (epochAmounts.approvedAssetAmount == 0) {
             emit ClaimDeposit(
                 poolId,
                 scId_,
-                epochId_,
+                epochId,
                 investor,
                 depositAssetId,
-                approvedAssetAmount,
+                paymentAssetAmount,
                 userOrder.pending,
-                claimableShareAmount
+                payoutShareAmount,
+                epochAmounts.issuedAt
             );
+            return (payoutShareAmount, paymentAssetAmount, cancelledAssetAmount, canClaimAgain);
         }
-        userOrder.lastUpdate = endEpochId + 1;
 
-        cancelledAssetAmount =
-            _postClaimUpdateQueued(poolId, scId_, investor, depositAssetId, userOrder, RequestType.Deposit);
+        // Skip epoch if user cannot claim
+        paymentAssetAmount =
+            userOrder.pending.mulDiv(epochAmounts.approvedAssetAmount, epochAmounts.pendingAssetAmount).toUint128();
+
+        if (paymentAssetAmount == 0) {
+            emit ClaimDeposit(
+                poolId,
+                scId_,
+                epochId,
+                investor,
+                depositAssetId,
+                paymentAssetAmount,
+                userOrder.pending,
+                payoutShareAmount,
+                epochAmounts.issuedAt
+            );
+            return (payoutShareAmount, paymentAssetAmount, cancelledAssetAmount, canClaimAgain);
+        }
+
+        payoutShareAmount = _navAssetPerShare(epochAmounts).reciprocalMulUint128(paymentAssetAmount);
+
+        // NOTE: During approvals, we reduce pendingDeposits by the approved asset amount. However, we only reduce
+        // the pending user amount if the claimable amount is non-zero.
+        //
+        // This extreme edge case has two implications:
+        //  1. The sum of pending user orders <= pendingDeposits (instead of equality)
+        //  2. The sum of claimable user amounts <= amount of minted share class tokens corresponding to the
+        // approved deposit asset amount (instead of equality).
+        //     I.e., it is possible for an epoch to have an excess of a share class tokens which cannot be
+        // claimed by anyone. This excess is at most n-1 share tokens for an epoch with n claimable users.
+        //
+        // The first implication can be switched to equality if we reduce the pending user amount independent of the
+        // claimable amount.
+        // However, in practice, it should be extremely unlikely to have users with non-zero pending but zero
+        // claimable for an epoch.
+        if (payoutShareAmount > 0) {
+            userOrder.pending -= paymentAssetAmount;
+        }
+
+        emit ClaimDeposit(
+            poolId,
+            scId_,
+            epochId,
+            investor,
+            depositAssetId,
+            paymentAssetAmount,
+            userOrder.pending,
+            payoutShareAmount,
+            epochAmounts.issuedAt
+        );
+
+        if (investEpochId[scId_][depositAssetId] == userOrder.lastUpdate) {
+            cancelledAssetAmount =
+                _postClaimUpdateQueued(poolId, scId_, investor, depositAssetId, userOrder, RequestType.Deposit);
+        }
     }
 
     /// @inheritdoc IShareClassManager
     function claimRedeem(PoolId poolId, ShareClassId scId_, bytes32 investor, AssetId payoutAssetId)
-        external
+        public
         auth
-        returns (uint128 payoutAssetAmount, uint128 paymentShareAmount, uint128 cancelledShareAmount)
+        returns (
+            uint128 payoutAssetAmount,
+            uint128 paymentShareAmount,
+            uint128 cancelledShareAmount,
+            bool canClaimAgain
+        )
     {
-        return claimRedeemUntilEpoch(
-            poolId, scId_, investor, payoutAssetId, epochPointers[scId_][payoutAssetId].latestRevocation
-        );
-    }
-
-    /// @inheritdoc IShareClassManager
-    function claimRedeemUntilEpoch(
-        PoolId poolId,
-        ShareClassId scId_,
-        bytes32 investor,
-        AssetId payoutAssetId,
-        uint32 endEpochId
-    ) public auth returns (uint128 payoutAssetAmount, uint128 paymentShareAmount, uint128 cancelledShareAmount) {
         require(exists(poolId, scId_), ShareClassNotFound());
-        require(endEpochId < epochId[poolId], EpochNotFound());
 
         UserOrder storage userOrder = redeemRequest[scId_][payoutAssetId][investor];
+        require(userOrder.lastUpdate <= revokeEpochId[scId_][payoutAssetId], RevocationRequired());
+        uint32 epochId = userOrder.lastUpdate;
+        userOrder.lastUpdate += 1;
+        canClaimAgain = userOrder.lastUpdate == revokeEpochId[scId_][payoutAssetId];
 
-        for (uint32 epochId_ = userOrder.lastUpdate; epochId_ <= endEpochId; epochId_++) {
-            EpochAmounts storage epochAmounts_ = epochAmounts[scId_][payoutAssetId][epochId_];
+        EpochRedeemAmounts storage epochAmounts = epochRedeemAmounts[scId_][payoutAssetId][epochId];
 
-            // Skip deposit epochs
-            if (epochAmounts_.redeemApproved == 0) {
-                continue;
-            }
-
-            // Skip epoch if user cannot claim
-            uint128 approvedShareAmount =
-                userOrder.pending.mulDiv(epochAmounts_.redeemApproved, epochAmounts_.redeemPending).toUint128();
-            if (approvedShareAmount == 0) {
-                emit ClaimRedeem(poolId, scId_, epochId_, investor, payoutAssetId, 0, userOrder.pending, 0);
-                continue;
-            }
-
-            uint128 claimableAssetAmount = uint256(approvedShareAmount).mulDiv(
-                epochAmounts_.redeemAssets, epochAmounts_.redeemApproved
-            ).toUint128();
-
-            // NOTE: During approvals, we reduce pendingRedeems by the approved share class token amount. However, we
-            // only reduce the pending user amount if the claimable amount is non-zero.
-            //
-            // This extreme edge case has two implications:
-            //  1. The sum of pending user orders <= pendingRedeems (instead of equality)
-            //  2. The sum of claimable user amounts <= amount of payout asset corresponding to the approved share class
-            // token amount (instead of equality).
-            //     I.e., it is possible for an epoch to have an excess of a single payout asset unit which cannot be
-            // claimed by anyone. This excess is at most n-1 payout asset units for an epoch with n claimable users.
-            //
-            // The first implication can be switched to equality if we reduce the pending user amount independent of the
-            // claimable amount.
-            // However, in practice, it should be extremely unlikely to have users with non-zero pending but zero
-            // claimable for an epoch.
-            if (claimableAssetAmount > 0) {
-                paymentShareAmount += approvedShareAmount;
-                payoutAssetAmount += claimableAssetAmount;
-                userOrder.pending -= approvedShareAmount;
-            }
-
+        if (epochAmounts.approvedShareAmount == 0) {
             emit ClaimRedeem(
                 poolId,
                 scId_,
-                epochId_,
+                epochId,
                 investor,
                 payoutAssetId,
-                approvedShareAmount,
+                payoutAssetAmount,
                 userOrder.pending,
-                claimableAssetAmount
+                paymentShareAmount,
+                epochAmounts.revokedAt
             );
+            return (payoutAssetAmount, paymentShareAmount, cancelledShareAmount, canClaimAgain);
         }
 
-        userOrder.lastUpdate = endEpochId + 1;
+        paymentShareAmount =
+            userOrder.pending.mulDiv(epochAmounts.approvedShareAmount, epochAmounts.pendingShareAmount).toUint128();
+        if (paymentShareAmount == 0) {
+            emit ClaimDeposit(
+                poolId,
+                scId_,
+                epochId,
+                investor,
+                payoutAssetId,
+                payoutAssetAmount,
+                userOrder.pending,
+                paymentShareAmount,
+                epochAmounts.revokedAt
+            );
+            return (payoutAssetAmount, paymentShareAmount, cancelledShareAmount, canClaimAgain);
+        }
 
-        cancelledShareAmount =
-            _postClaimUpdateQueued(poolId, scId_, investor, payoutAssetId, userOrder, RequestType.Redeem);
+        payoutAssetAmount = ConversionLib.convertWithPrice(
+            paymentShareAmount,
+            hubRegistry.decimals(poolId),
+            hubRegistry.decimals(payoutAssetId),
+            _navAssetPerShare(epochAmounts)
+        ).toUint128();
+
+        // NOTE: During approvals, we reduce pendingDeposits by the approved asset amount. However, we only reduce
+        // the pending user amount if the claimable amount is non-zero.
+        //
+        // This extreme edge case has two implications:
+        //  1. The sum of pending user orders <= pendingDeposits (instead of equality)
+        //  2. The sum of claimable user amounts <= amount of minted share class tokens corresponding to the
+        // approved deposit asset amount (instead of equality).
+        //     I.e., it is possible for an epoch to have an excess of a share class tokens which cannot be
+        // claimed by anyone. This excess is at most n-1 share tokens for an epoch with n claimable users.
+        //
+        // The first implication can be switched to equality if we reduce the pending user amount independent of the
+        // claimable amount.
+        // However, in practice, it should be extremely unlikely to have users with non-zero pending but zero
+        // claimable for an epoch.
+        if (payoutAssetAmount > 0) {
+            userOrder.pending -= paymentShareAmount;
+        }
+
+        emit ClaimRedeem(
+            poolId,
+            scId_,
+            epochId,
+            investor,
+            payoutAssetId,
+            payoutAssetAmount,
+            userOrder.pending,
+            paymentShareAmount,
+            epochAmounts.revokedAt
+        );
+
+        if (redeemEpochId[scId_][payoutAssetId] == userOrder.lastUpdate) {
+            cancelledShareAmount =
+                _postClaimUpdateQueued(poolId, scId_, investor, payoutAssetId, userOrder, RequestType.Redeem);
+        }
+    }
+
+    function updateShareClassPrice(PoolId poolId, ShareClassId scId_, D18 navPoolPerShare) external auth {
+        require(exists(poolId, scId_), ShareClassNotFound());
+
+        ShareClassMetrics storage m = metrics[scId_];
+        m.navPerShare = navPoolPerShare;
+        emit UpdateShareClass(poolId, scId_, navPoolPerShare.mulUint128(m.totalIssuance), navPoolPerShare, m.totalIssuance);
     }
 
     function updateMetadata(
@@ -495,49 +489,24 @@ contract ShareClassManager is Auth, IShareClassManager {
     }
 
     /// @inheritdoc IShareClassManager
-    function increaseShareClassIssuance(PoolId poolId, ShareClassId scId_, D18 navPerShare, uint128 amount)
-        external
-        auth
-    {
+    function increaseShareClassIssuance(PoolId poolId, ShareClassId scId_, uint128 amount) external auth {
         require(exists(poolId, scId_), ShareClassNotFound());
 
         uint128 newIssuance = metrics[scId_].totalIssuance + amount;
         metrics[scId_].totalIssuance = newIssuance;
 
-        emit IssueShares(poolId, scId_, epochId[poolId], navPerShare.mulUint128(newIssuance), navPerShare, newIssuance, amount);
+        emit RemoteIssueShares(poolId, scId_, amount);
     }
 
     /// @inheritdoc IShareClassManager
-    function decreaseShareClassIssuance(PoolId poolId, ShareClassId scId_, D18 navPerShare, uint128 amount)
-        external
-        auth
-    {
+    function decreaseShareClassIssuance(PoolId poolId, ShareClassId scId_, uint128 amount) external auth {
         require(exists(poolId, scId_), ShareClassNotFound());
         require(metrics[scId_].totalIssuance >= amount, DecreaseMoreThanIssued());
 
         uint128 newIssuance = metrics[scId_].totalIssuance - amount;
         metrics[scId_].totalIssuance = newIssuance;
 
-        emit RevokeShares(poolId, scId_, epochId[poolId], navPerShare.mulUint128(newIssuance), navPerShare, newIssuance, amount, 0);
-    }
-
-    /// @inheritdoc IShareClassManager
-    function updateShareClass(PoolId poolId, ShareClassId scId_, D18 navPerShare, bytes calldata data) external auth returns (uint128, D18) {
-        require(exists(poolId, scId_), ShareClassNotFound());
-
-        ShareClassMetrics storage m = metrics[scId_];
-        m.navPerShare = navPerShare;
-        emit UpdateShareClass(poolId, scId_, navPerShare.mulUint128(m.totalIssuance), navPerShare, m.totalIssuance, data);
-
-        return (m.totalIssuance, navPerShare);
-    }
-
-    /// @inheritdoc IShareClassManager
-    function shareClassPrice(PoolId poolId, ShareClassId scId_) external view returns (uint128, D18) {
-        require(exists(poolId, scId_), ShareClassNotFound());
-
-        ShareClassMetrics memory m = metrics[scId_];
-        return (m.totalIssuance, m.navPerShare);
+        emit RemoteRevokeShares(poolId, scId_, amount);
     }
 
     /// @inheritdoc IShareClassManager
@@ -551,54 +520,6 @@ contract ShareClassManager is Auth, IShareClassManager {
     }
 
     /// @inheritdoc IShareClassManager
-    function update(PoolId, bytes calldata) external pure {
-        // No-op on purpose to allow higher level contract calls to this
-    }
-
-    /// @notice Revokes shares for a single epoch, updates epoch ratio and emits event.
-    ///
-    /// @param poolId Identifier of the pool
-    /// @param scId_ Identifier of the share class
-    /// @param payoutAssetId Identifier of the payout asset
-    /// @param navPerShare Total value of assets of the pool and share class per share
-    /// @param valuation Source of truth for quotas, e.g. the price of a pool amount in payout asset
-    /// @param poolCurrency The address of the pool currency
-    /// @param epochAmounts_ Epoch ratio storage for the amount of revoked share class tokens and the corresponding
-    /// amount
-    /// in payout asset
-    /// @param totalIssuance Total issuance of share class tokens before revoking
-    /// @param epochId_ Identifier of the epoch for which we revoke
-    /// @return payoutPoolAmount Converted amount of pool currency based on number of revoked shares
-    function _revokeEpochShares(
-        PoolId poolId,
-        ShareClassId scId_,
-        AssetId payoutAssetId,
-        D18 navPerShare,
-        IERC7726 valuation,
-        address poolCurrency,
-        EpochAmounts storage epochAmounts_,
-        uint128 totalIssuance,
-        uint32 epochId_
-    ) private returns (uint128 payoutPoolAmount) {
-        payoutPoolAmount = navPerShare.mulUint128(epochAmounts_.redeemApproved);
-        epochAmounts_.redeemAssets =
-            IERC7726(valuation).getQuote(payoutPoolAmount, poolCurrency, payoutAssetId.addr()).toUint128();
-
-        uint128 newIssuance = totalIssuance - epochAmounts_.redeemApproved;
-        uint128 nav = navPerShare.mulUint128(newIssuance);
-        emit RevokeShares(
-            poolId,
-            scId_,
-            epochId_,
-            nav,
-            navPerShare,
-            newIssuance,
-            epochAmounts_.redeemApproved,
-            epochAmounts_.redeemAssets
-        );
-    }
-
-    /// @inheritdoc IShareClassManager
     function exists(PoolId poolId, ShareClassId scId_) public view returns (bool) {
         return shareClassIds[poolId][scId_];
     }
@@ -609,37 +530,14 @@ contract ShareClassManager is Auth, IShareClassManager {
 
         uint256 sLen = bytes(symbol).length;
         require(sLen > 0 && sLen <= 32, InvalidMetadataSymbol());
+        require(!salts[salt], AlreadyUsedSalt());
 
         require(salt != bytes32(0), InvalidSalt());
-        // Either the salt has not changed, or the salt was never used before by any share class token
-        require(salt == metadata[scId_].salt || !salts[salt], AlreadyUsedSalt());
+        // Either the salt was not initialized yet or it is the same as before - i.e. updating the salt is not possible
+        require(salt == metadata[scId_].salt || metadata[scId_].salt == bytes32(0));
         salts[salt] = true;
 
         metadata[scId_] = ShareClassMetadata(name, symbol, salt);
-    }
-
-    /// @notice Advances the current epoch of the given pool if it has not been incremented within the multicall. If the
-    /// epoch has already been incremented, we don't bump it again to allow deposit and redeem approvals to point to the
-    /// same epoch id. Emits NewEpoch event if the epoch is advanced.
-    ///
-    /// @param poolId Identifier of the pool for which we want to advance an epoch.
-    /// @return epochIdCurrentBlock Identifier of the current epoch. E.g., if the epoch advanced from i to i+1, i is
-    /// returned.
-    function _advanceEpoch(PoolId poolId) private returns (uint32 epochIdCurrentBlock) {
-        uint32 epochId_ = epochId[poolId];
-
-        // Epoch doesn't necessarily advance, e.g. in case of multiple approvals inside the same multiCall
-        if (_epochIncrement == 0) {
-            _epochIncrement = 1;
-            uint32 newEpochId = epochId_ + 1;
-            epochId[poolId] = newEpochId;
-
-            emit NewEpoch(poolId, newEpochId);
-
-            return epochId_;
-        } else {
-            return uint32(uint128(epochId_ - 1).max(1));
-        }
     }
 
     function _postClaimUpdateQueued(
@@ -725,7 +623,10 @@ contract ShareClassManager is Auth, IShareClassManager {
 
         cancelledAmount = isIncrement ? 0 : amount;
         userOrder.pending = isIncrement ? userOrder.pending + amount : userOrder.pending - amount;
-        userOrder.lastUpdate = epochId[poolId];
+
+        uint32 currentEpoch =
+            requestType == RequestType.Deposit ? investEpochId[scId_][assetId] : redeemEpochId[scId_][assetId];
+        userOrder.lastUpdate = currentEpoch;
 
         if (requestType == RequestType.Deposit) {
             _updatePendingDeposit(poolId, scId_, amount, isIncrement, investor, assetId, userOrder, queued);
@@ -757,12 +658,11 @@ contract ShareClassManager is Auth, IShareClassManager {
         QueuedOrder storage queued,
         RequestType requestType
     ) private returns (bool skipPendingUpdate) {
-        uint128 latestApproval = requestType == RequestType.Deposit
-            ? epochPointers[scId_][assetId].latestDepositApproval
-            : epochPointers[scId_][assetId].latestRedeemApproval;
+        uint32 currentEpoch =
+            requestType == RequestType.Deposit ? issueEpochId[scId_][assetId] : redeemEpochId[scId_][assetId];
 
         // Short circuit if user can mutate pending, i.e. last update happened after latest approval or is first update
-        if (userOrder.lastUpdate > latestApproval || userOrder.pending == 0 || latestApproval == 0) {
+        if (userOrder.lastUpdate == currentEpoch || userOrder.pending == 0 || currentEpoch == 0) {
             return false;
         }
 
@@ -782,7 +682,7 @@ contract ShareClassManager is Auth, IShareClassManager {
         emit UpdateRequest(
             poolId,
             scId_,
-            epochId[poolId],
+            currentEpoch,
             requestType,
             investor,
             assetId,
@@ -812,7 +712,7 @@ contract ShareClassManager is Auth, IShareClassManager {
         emit UpdateRequest(
             poolId,
             scId_,
-            epochId[poolId],
+            issueEpochId[scId_][assetId],
             RequestType.Deposit,
             investor,
             assetId,
@@ -840,7 +740,7 @@ contract ShareClassManager is Auth, IShareClassManager {
         emit UpdateRequest(
             poolId,
             scId_,
-            epochId[poolId],
+            redeemEpochId[scId_][assetId],
             RequestType.Redeem,
             investor,
             assetId,
@@ -849,5 +749,13 @@ contract ShareClassManager is Auth, IShareClassManager {
             queued.amount,
             queued.isCancelling
         );
+    }
+
+    function _navAssetPerShare(EpochRedeemAmounts memory amounts) private pure returns (D18) {
+        return amounts.navPoolPerShare / amounts.pricePoolPerAsset;
+    }
+
+    function _navAssetPerShare(EpochInvestAmounts memory amounts) private pure returns (D18) {
+        return amounts.navPoolPerShare / amounts.pricePoolPerAsset;
     }
 }
