@@ -9,6 +9,7 @@ import {ISafe} from "src/common/interfaces/IGuardian.sol";
 import {VaultUpdateKind} from "src/common/libraries/MessageLib.sol";
 import {ShareClassId} from "src/common/types/ShareClassId.sol";
 import {AssetId, newAssetId} from "src/common/types/AssetId.sol";
+import {AccountId} from "src/common/types/AccountId.sol";
 import {PoolId} from "src/common/types/PoolId.sol";
 import {MessageLib, UpdateContractType, VaultUpdateKind} from "src/common/libraries/MessageLib.sol";
 
@@ -58,7 +59,12 @@ contract LocalhostDeployer is FullDeployer {
         hub.addShareClass(poolId, "Tokenized MMF", "MMF", bytes32(bytes("1")), bytes(""));
         hub.notifyPool{value: 0.001 ether}(poolId, centrifugeId);
         hub.notifyShareClass{value: 0.001 ether}(poolId, centrifugeId, scId, bytes32(bytes20(freelyTransferable)));
-        hub.createHolding(poolId, scId, assetId, identityValuation, false, 0x01);
+
+        hub.createAccount(poolId, AccountId.wrap(0x01), true);
+        hub.createAccount(poolId, AccountId.wrap(0x02), false);
+        hub.createAccount(poolId, AccountId.wrap(0x03), false);
+        hub.createAccount(poolId, AccountId.wrap(0x04), false);
+        hub.createHolding(poolId, scId, assetId, identityValuation, AccountId.wrap(0x01), AccountId.wrap(0x02), AccountId.wrap(0x03), AccountId.wrap(0x04));
 
         hub.updateContract(
             poolId,
