@@ -11,8 +11,8 @@ import {Helpers} from "test/pools/fuzzing/recon-pools/utils/Helpers.sol";
 import {AssetId} from "src/common/types/AssetId.sol";
 import {D18} from "src/misc/types/D18.sol";
 
-// forge test --match-contract CryticToFoundry --match-path test/pools/fuzzing/recon-scm-only/CryticToFoundry.sol -vv
-contract CryticToFoundry is Test, TargetFunctions, FoundryAsserts {
+// forge test --match-contract SimpleToFoundry --match-path test/pools/fuzzing/recon-scm-only/SimpleToFoundry.sol -vv
+contract SimpleToFoundry is Test, TargetFunctions, FoundryAsserts {
     
     function setUp() public {
         setup();
