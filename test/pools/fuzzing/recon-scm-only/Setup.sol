@@ -56,8 +56,16 @@ contract MockHubRegistry {
 
 
 contract MockValuation {
+
+    uint256 MULTIPLIER; // In 100
+    
+    function setMultiplier(uint256 multiplier) external {
+        require(multiplier < 10_000);
+        MULTIPLIER = multiplier;
+    }
+
     function getQuote(uint256 baseAmount, address base, address quote) external view returns (uint256 quoteAmount) {
-        return baseAmount;
+        return baseAmount * MULTIPLIER / 100;
     }
 
 }
@@ -120,6 +128,7 @@ abstract contract Setup is BaseSetup, ActorManager, AssetManager, Utils {
         accounting.createAccount(poolId, EQUITY_ACCOUNT, false);
         accounting.createAccount(poolId, LOSS_ACCOUNT, false);
         accounting.createAccount(poolId, GAIN_ACCOUNT, false);
+
         // TODO: Create holdings but simplified
         // TODO: depositAssetId vs payoutAssetId
         // NOTE: Only non liability

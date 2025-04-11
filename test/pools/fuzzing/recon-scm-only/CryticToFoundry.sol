@@ -18,21 +18,6 @@ contract CryticToFoundry is Test, TargetFunctions, FoundryAsserts {
         setup();
     }
 
-// forge test --match-test test_property_sum_of_requests_0 -vvv 
-function test_property_sum_of_requests_0() public {
-
-    shareClassManager_requestDeposit(1);
-
-    shareClassManager_approveDeposits(1);
-
-    shareClassManager_issueShares(D18.wrap(1));
-
-    shareClassManager_claimDeposit();
-
-    property_sum_of_requests();
-
- }
-    
     function test_basic() public {
       shareClassManager_requestDeposit(123);
     //   _switchActor(1);

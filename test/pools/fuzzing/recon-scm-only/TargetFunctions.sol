@@ -38,6 +38,9 @@ abstract contract TargetFunctions is
     Properties
 {
 
+    // TODO: We are the HUB NOW
+    // NEED TO FUZZ AT A DIFFERENT LEVEL
+
     function shareClassManager_addShareClass(string memory name, string memory symbol, bytes32 salt, bytes memory ) public asAdmin {
         shareClassManager.addShareClass(poolId, name, symbol, salt, bytes(""));
     }

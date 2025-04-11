@@ -428,7 +428,7 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler {
         external
         auth
     {
-        shareClassManager.requestDeposit(poolId, scId, amount, investor, depositAssetId);
+        shareClassManager.requestDeposit(poolId, scId, amount, investor, depositAssetId); /// @audit this is a payment asset no?
     }
 
     /// @inheritdoc IHubGatewayHandler
