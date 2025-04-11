@@ -9,7 +9,7 @@ import {TargetFunctions} from "./TargetFunctions.sol";
 import {Helpers} from "test/pools/fuzzing/recon-pools/utils/Helpers.sol";
 
 import {AssetId} from "src/common/types/AssetId.sol";
-
+import {D18} from "src/misc/types/D18.sol";
 
 // forge test --match-contract CryticToFoundry --match-path test/pools/fuzzing/recon-scm-only/CryticToFoundry.sol -vv
 contract CryticToFoundry is Test, TargetFunctions, FoundryAsserts {
@@ -18,18 +18,31 @@ contract CryticToFoundry is Test, TargetFunctions, FoundryAsserts {
         setup();
     }
 
+// forge test --match-test test_property_sum_of_requests_0 -vvv 
+function test_property_sum_of_requests_0() public {
 
+    shareClassManager_requestDeposit(1);
+
+    shareClassManager_approveDeposits(1);
+
+    shareClassManager_issueShares(D18.wrap(1));
+
+    shareClassManager_claimDeposit();
+
+    property_sum_of_requests();
+
+ }
     
     function test_basic() public {
       shareClassManager_requestDeposit(123);
-      _switchActor(1);
+    //   _switchActor(1);
       shareClassManager_requestDeposit(123);
-      shareClassManager_approveDeposits(123);
+    //   shareClassManager_approveDeposits(123);
       _logRequests();
 
-      _switchActor(0);
-      shareClassManager_cancelDepositRequest();
-      _logRequests();
+    //   _switchActor(0);
+    //   shareClassManager_cancelDepositRequest();
+    //   _logRequests();
       // They cannot queue again since they requested cancelling
     //   shareClassManager_requestDeposit(123);
     //   _logRequests();
@@ -61,4 +74,6 @@ contract CryticToFoundry is Test, TargetFunctions, FoundryAsserts {
             console2.log("queuedRedeemRequest", queuedRedeemRequest);
         }
     }
+
+
 }

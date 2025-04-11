@@ -205,9 +205,9 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler {
     {
         _protectedAndUnlocked();
 
-        (uint128 approvedAssetAmount,) =
+        (uint128 approvedAssetAmount,) = /// Some amount at time X (dust) and new amounts at time closer to now
             shareClassManager.approveDeposits(unlockedPoolId, scId, maxApproval, paymentAssetId, valuation);
-
+        /// @audit there is value that is tracked in SCM that is not added to HOLDINGS
         uint128 valueChange = holdings.increase(unlockedPoolId, scId, paymentAssetId, valuation, approvedAssetAmount);
 
         accounting.addCredit(
@@ -480,7 +480,7 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler {
         address poolCurrency = hubRegistry.currency(poolId).addr();
         transientValuation.setPrice(assetId.addr(), poolCurrency, pricePerUnit);
         uint128 valueChange = transientValuation.getQuote(amount, assetId.addr(), poolCurrency).toUint128();
-
+        /// @audit the update here desynchs the holdings as the holdings remain unchanged, but we add values
         (uint128 debited, uint128 credited) = _updateJournal(debits, credits);
         uint128 debitValueLeft = valueChange - debited;
         uint128 creditValueLeft = valueChange - credited;

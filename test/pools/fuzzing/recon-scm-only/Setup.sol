@@ -24,6 +24,7 @@ import {ShareClassManager} from "src/hub/ShareClassManager.sol";
 
 // Interfaces
 import {IHubRegistry} from "src/hub/interfaces/IHubRegistry.sol";
+import {AccountId, newAccountId} from "src/common/types/AccountId.sol";
 import {IAccounting} from "src/hub/interfaces/IAccounting.sol";
 import {IHoldings} from "src/hub/interfaces/IHoldings.sol";
 import {IMessageSender} from "src/common/interfaces/IMessageSender.sol";
@@ -43,6 +44,7 @@ import {D18, d18} from "src/misc/types/D18.sol";
 import {MockAdapter} from "test/common/mocks/MockAdapter.sol";
 import {MockGasService} from "test/common/mocks/MockGasService.sol";
 import {PoolManager} from "src/vaults/PoolManager.sol";
+import {IHub, AccountType} from "src/hub/interfaces/IHub.sol";
 
 
 
@@ -71,10 +73,21 @@ abstract contract Setup is BaseSetup, ActorManager, AssetManager, Utils {
     AssetId depositAssetId = AssetId.wrap(123);
     AssetId payoutAssetId = AssetId.wrap(123);
 
+    Accounting accounting;
+    Holdings holdings;
+
+    /// GLOBAL TRACKING
+    uint256 totalApprovedDeposits;
+
     modifier stateless {
         _;
         revert("stateless");
     }
+
+    AccountId ASSET_ACCOUNT;
+    AccountId EQUITY_ACCOUNT;
+    AccountId LOSS_ACCOUNT;
+    AccountId GAIN_ACCOUNT;
 
 
     /// === Setup === ///
@@ -84,16 +97,34 @@ abstract contract Setup is BaseSetup, ActorManager, AssetManager, Utils {
         _addActor(address(0x411c3));
         _addActor(address(0xb0b));
 
-        
-
         mockRegistry = new MockHubRegistry();
         valuation = IERC7726(address(new MockValuation()));
+        accounting = new Accounting(address(this)); 
+        holdings  = new Holdings(IHubRegistry(address(mockRegistry)), address(this));
+        holdings.rely(address(this));
 
         shareClassManager = new ShareClassManager(IHubRegistry(address(mockRegistry)), address(this));
         shareClassManager.rely(address(this));
 
         poolId = PoolId.wrap(1); // Create Pool ID
         scId = shareClassManager.addShareClass(poolId, "Name", "Symbol", bytes32(uint256(1)), hex"");
+
+        // TODO: I am HUB AFAICT
+        // I can test stuff against Accounting directly
+        // I can do this:
+        ASSET_ACCOUNT = newAccountId(1, uint8(AccountType.Asset));
+        EQUITY_ACCOUNT = newAccountId(1, uint8(AccountType.Equity));
+        LOSS_ACCOUNT = newAccountId(1, uint8(AccountType.Loss));
+        GAIN_ACCOUNT = newAccountId(1, uint8(AccountType.Gain));
+        accounting.createAccount(poolId, ASSET_ACCOUNT, true);
+        accounting.createAccount(poolId, EQUITY_ACCOUNT, false);
+        accounting.createAccount(poolId, LOSS_ACCOUNT, false);
+        accounting.createAccount(poolId, GAIN_ACCOUNT, false);
+        // TODO: Create holdings but simplified
+        // TODO: depositAssetId vs payoutAssetId
+        // NOTE: Only non liability
+        AccountId[] memory accounts = new AccountId[](0);
+        holdings.create(poolId, scId, depositAssetId, valuation, false, accounts);
     }
 
 

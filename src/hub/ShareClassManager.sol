@@ -161,7 +161,7 @@ contract ShareClassManager is Auth, IShareClassManager {
 
         // Update epoch data
         EpochAmounts storage epochAmounts_ = epochAmounts[scId_][paymentAssetId][approvalEpochId];
-        epochAmounts_.depositApproved = approvedAssetAmount;
+        epochAmounts_.depositApproved = approvedAssetAmount; /// @audit those values are all here
         epochAmounts_.depositPool = approvedPoolAmount;
         epochAmounts_.depositPending = _pendingDeposit;
         epochPointers[scId_][paymentAssetId].latestDepositApproval = approvalEpochId;
@@ -295,7 +295,7 @@ contract ShareClassManager is Auth, IShareClassManager {
 
             require(epochAmounts_.redeemApproved <= totalIssuance, RevokeMoreThanIssued());
 
-            payoutPoolAmount += _revokeEpochShares(
+            payoutPoolAmount += _revokeEpochShares( /// @audit stateful NAV Property?
                 poolId,
                 scId_,
                 payoutAssetId,
@@ -417,7 +417,7 @@ contract ShareClassManager is Auth, IShareClassManager {
         require(exists(poolId, scId_), ShareClassNotFound());
         require(endEpochId < epochId[poolId], EpochNotFound());
 
-        UserOrder storage userOrder = redeemRequest[scId_][payoutAssetId][investor];
+        UserOrder storage userOrder = redeemRequest[scId_][payoutAssetId][investor]; /// @audit this is coming back from prev epochs
 
         for (uint32 epochId_ = userOrder.lastUpdate; epochId_ <= endEpochId; epochId_++) {
             EpochAmounts storage epochAmounts_ = epochAmounts[scId_][payoutAssetId][epochId_];
@@ -615,7 +615,7 @@ contract ShareClassManager is Auth, IShareClassManager {
 
             return epochId_;
         } else {
-            return uint32(uint128(epochId_ - 1).max(1));
+            return uint32(uint128(epochId_ - 1).max(1)); /// @audit TODO Is this correct?
         }
     }
 
@@ -699,9 +699,16 @@ contract ShareClassManager is Auth, IShareClassManager {
         if (_updateQueued(poolId, scId_, amount, isIncrement, investor, assetId, userOrder, queued, requestType)) {
             return 0;
         }
-
+        /// @audit why isIncrement increases pending but not cancelled? How do you reduce if you can only ever reduce by 100%?
         cancelledAmount = isIncrement ? 0 : amount;
+        if(!isIncrement) {
+            assert(userOrder.pending == amount); // Amount is the same, so
+        }
+
         userOrder.pending = isIncrement ? userOrder.pending + amount : userOrder.pending - amount;
+        if(!isIncrement) {
+            assert(userOrder.pending == 0); // It's now 0
+        }
         userOrder.lastUpdate = epochId[poolId];
 
         if (requestType == RequestType.Deposit) {
@@ -746,7 +753,7 @@ contract ShareClassManager is Auth, IShareClassManager {
         // Block increasing queued amount if cancelling is already queued
         // NOTE: Can only happen due to race condition as CV blocks requests if cancellation is in progress
         require(!(queued.isCancelling == true && amount > 0), CancellationQueued());
-
+        // TODO: You can cancel twice, but can you increase after a cancel?
         if (!isIncrement) {
             queued.isCancelling = true;
         } else {
