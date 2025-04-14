@@ -92,18 +92,63 @@ abstract contract Properties is BeforeAfter, Asserts {
         } else if (assets < equity) {
             // Loss
             int128 loss = accounting.accountValue(poolId, LOSS_ACCOUNT);
-            t(-loss == equity - assets, "property_total_yield loss"); // Loss needs to be reversed
+            t(loss == assets - equity, "property_total_yield loss"); // Loss is negative
         }
     }
 
     function property_asset_soundness() public {
         int128 assets = accounting.accountValue(poolId, ASSET_ACCOUNT);
+        int128 equity = accounting.accountValue(poolId, EQUITY_ACCOUNT);
+        int128 loss = accounting.accountValue(poolId, LOSS_ACCOUNT);
+        int128 gain = accounting.accountValue(poolId, GAIN_ACCOUNT);
 
-        // accountValue(Equity) + accountValue(Gain) - accountValue(Loss)
-        t(assets == accounting.accountValue(poolId, EQUITY_ACCOUNT) + accounting.accountValue(poolId, GAIN_ACCOUNT) + accounting.accountValue(poolId, LOSS_ACCOUNT), "property_asset_soundness");
+        // assets = accountValue(Equity) + accountValue(Gain) - accountValue(Loss)
+        t(assets == equity + gain + loss, "property_asset_soundness"); // Loss is already negative
     }
 
-    // function property_equity_soundness() public {
+    function property_equity_soundness() public {
+        int128 assets = accounting.accountValue(poolId, ASSET_ACCOUNT);
+        int128 equity = accounting.accountValue(poolId, EQUITY_ACCOUNT);
+        int128 loss = accounting.accountValue(poolId, LOSS_ACCOUNT);
+        int128 gain = accounting.accountValue(poolId, GAIN_ACCOUNT);
 
-    // }
+        // equity = accountValue(Asset) + (ABS(accountValue(Loss)) - accountValue(Gain) // Loss comes back, gain is subtracted
+        t(equity == assets + (-loss) - gain, "property_equity_soundness"); // Loss comes back, gain is subtracted, since loss is negative we need to negate it
+    }
+
+    function property_gain_soundness() public {
+        int128 assets = accounting.accountValue(poolId, ASSET_ACCOUNT);
+        int128 equity = accounting.accountValue(poolId, EQUITY_ACCOUNT);
+        int128 loss = accounting.accountValue(poolId, LOSS_ACCOUNT);
+        int128 gain = accounting.accountValue(poolId, GAIN_ACCOUNT);
+
+        // Total Yield = // accountValue(Asset) - accountValue(Equity))
+        // Gain = Total Yield + accountValue(loss) /// I had to gain yield + loss to get to yield
+        int128 totalYield = assets - equity; // Can be positive or negative
+        t(gain == totalYield + (-loss), "property_gain_soundness");
+    }
+
+    function property_loss_soundness() public {
+        int128 assets = accounting.accountValue(poolId, ASSET_ACCOUNT);
+        int128 equity = accounting.accountValue(poolId, EQUITY_ACCOUNT);
+        int128 loss = accounting.accountValue(poolId, LOSS_ACCOUNT);
+        int128 gain = accounting.accountValue(poolId, GAIN_ACCOUNT);
+
+        // Loss = Total Yield (abs) - accountValue(gain) // Negative Loss (- of this is loss)
+        int128 totalYield = assets - equity; // Can be positive or negative
+        t(loss == totalYield - gain, "property_gain_soundness");
+    }
+
+    function property_accounting_and_holdings_soundness() public {
+        // Accounting.assets is the value held
+        // Holdings.value is the value held, they must match
+        uint128 assets = uint128(accounting.accountValue(poolId, ASSET_ACCOUNT));
+        uint128 holdingsValue = holdings.value(poolId, scId, depositAssetId);
+        
+        // This property holds all of the system accounting together
+        eq(assets, holdingsValue, "Assets and Holdingsm must match");
+    }
+
+    // TODO: Holdings.amount should be equal to equity value / average price (minus rounding)
+        
 }

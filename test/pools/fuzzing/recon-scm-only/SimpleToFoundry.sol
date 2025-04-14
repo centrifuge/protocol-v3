@@ -43,11 +43,15 @@ contract SimpleToFoundry is Test, TargetFunctions, FoundryAsserts {
  // forge test --match-test test_property_total_yield_0 -vvv 
 function test_property_total_yield_0() public {
 
-    shareClassManager_requestDeposit(103);
+    shareClassManager_requestDeposit(38798458659217211618845882225298602406);
+
+    setMultiplier(439);
+
+    approveDeposits(38792186940037273484818655409910407055);
 
     setMultiplier(1);
 
-    approveDeposits(101);
+    updateHolding();
 
     setMultiplier(0);
 
@@ -59,28 +63,7 @@ function test_property_total_yield_0() public {
 
  }
 
- // forge test --match-test test_property_asset_soundness_1 -vvv 
-function test_property_asset_soundness_1() public {
 
-    shareClassManager_requestDeposit(210571474393036925728978485387258);
-
-    setMultiplier(122);
-
-    approveDeposits(29486656563646054041440994562882);
-
-    shareClassManager_requestRedeem(1511330979);
-    
-    shareClassManager_approveRedeems(289071521824912539322392163);
-
-    shareClassManager_increaseShareClassIssuance(D18.wrap(298067), 964384378488605371001024097680);
-
-    revokeShares(D18.wrap(663905367));
-
-    updateHolding();
-
-    property_asset_soundness();
-
- }
 
  function _logValueAndDepositValue() internal {
     (, uint128 value) = _getAmountAndValue();
