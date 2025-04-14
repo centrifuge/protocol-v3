@@ -150,5 +150,10 @@ abstract contract Properties is BeforeAfter, Asserts {
     }
 
     // TODO: Holdings.amount should be equal to equity value / average price (minus rounding)
+    // NOTE: Since we never change price the current formula should be somewhat simply
+
+    function property_holdings_amount_is_consistent_with_average_valuation() public {
+        // TODO: This property will prob take a while
+    }
         
 }
