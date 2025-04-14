@@ -88,11 +88,11 @@ abstract contract Properties is BeforeAfter, Asserts {
         if(assets > equity) {
             // Yield
             int128 yield = accounting.accountValue(poolId, GAIN_ACCOUNT);
-            t(yield == assets - equity, "property_total_yield");
+            t(yield == assets - equity, "property_total_yield gain");
         } else if (assets < equity) {
             // Loss
             int128 loss = accounting.accountValue(poolId, LOSS_ACCOUNT);
-            t(loss == equity - assets, "property_total_yield");
+            t(-loss == equity - assets, "property_total_yield loss"); // Loss needs to be reversed
         }
     }
 
@@ -100,7 +100,7 @@ abstract contract Properties is BeforeAfter, Asserts {
         int128 assets = accounting.accountValue(poolId, ASSET_ACCOUNT);
 
         // accountValue(Equity) + accountValue(Gain) - accountValue(Loss)
-        t(assets == accounting.accountValue(poolId, EQUITY_ACCOUNT) + accounting.accountValue(poolId, GAIN_ACCOUNT) - accounting.accountValue(poolId, LOSS_ACCOUNT), "property_asset_soundness");
+        t(assets == accounting.accountValue(poolId, EQUITY_ACCOUNT) + accounting.accountValue(poolId, GAIN_ACCOUNT) + accounting.accountValue(poolId, LOSS_ACCOUNT), "property_asset_soundness");
     }
 
     // function property_equity_soundness() public {

@@ -40,68 +40,45 @@ contract SimpleToFoundry is Test, TargetFunctions, FoundryAsserts {
       updateHolding();
     }
 
-    // forge test --match-test test_property_trackingOfValues_0 -vvv 
-function test_property_trackingOfValues_0() public {
+ // forge test --match-test test_property_total_yield_0 -vvv 
+function test_property_total_yield_0() public {
 
-    shareClassManager_requestDeposit(100);
-
-    approveDeposits(100);
-
-    _logValueAndDepositValue();
+    shareClassManager_requestDeposit(103);
 
     setMultiplier(1);
 
-    updateHolding(); /// @audit Rounding up somewhere?
-
-    _logValueAndDepositValue();
-
-    property_trackingOfValues();
-
- }
-
- // forge test --match-test test_property_sound_loss_0 -vvv 
-function test_property_sound_loss_0() public {
-
-    shareClassManager_requestDeposit(38985021616332776005721838188067962871);
-
-    setMultiplier(440);
-
-    approveDeposits(38792186940037273484818655409910407055);
-
-    setMultiplier(2);
-
-    updateHolding();
-
-    setMultiplier(0);
-
-    console2.log("lossValue", lossValue);
-
-    updateHolding();
-
-    console2.log("lossValue", lossValue);
-
-    property_sound_loss();
-
- }
-
- // forge test --match-test test_property_sum_of_losses_1 -vvv 
-function test_property_sum_of_losses_1() public {
-
-    shareClassManager_requestDeposit(43764355266177282889117198556747624317);
-
-    setMultiplier(391);
-
-    approveDeposits(43899286528186883990784102317729252210);
-
-    setMultiplier(3);
-
-    updateHolding();
+    approveDeposits(101);
 
     setMultiplier(0);
 
     updateHolding();
 
-    property_sum_of_losses();
+    _logALot();
+
+    property_total_yield();
+
+ }
+
+ // forge test --match-test test_property_asset_soundness_1 -vvv 
+function test_property_asset_soundness_1() public {
+
+    shareClassManager_requestDeposit(210571474393036925728978485387258);
+
+    setMultiplier(122);
+
+    approveDeposits(29486656563646054041440994562882);
+
+    shareClassManager_requestRedeem(1511330979);
+    
+    shareClassManager_approveRedeems(289071521824912539322392163);
+
+    shareClassManager_increaseShareClassIssuance(D18.wrap(298067), 964384378488605371001024097680);
+
+    revokeShares(D18.wrap(663905367));
+
+    updateHolding();
+
+    property_asset_soundness();
 
  }
 
@@ -111,54 +88,9 @@ function test_property_sum_of_losses_1() public {
     console2.log("depositValue", depositValue);
  }
 
-// forge test --match-test test_property_sum_of_losses_0 -vvv 
-function test_property_sum_of_losses_0() public {
 
-    shareClassManager_requestDeposit(101);
 
-    setMultiplier(1);
-
-    approveDeposits(102);
-
-    setMultiplier(0);
-
-    updateHolding();
-
-    console2.log("lossValue", lossValue);
-    console2.log("int256(accounting.accountValue(poolId, LOSS_ACCOUNT))", int256(accounting.accountValue(poolId, LOSS_ACCOUNT)));
-    property_sum_of_losses();
-
- }
-
-// forge test --match-test test_property_trackingOfAmounts_0 -vvv 
-function test_property_trackingOfAmounts_0() public {
-
-    updateHoldingAmount(1,true,0,0,0,0);
-
-    _logRequests();
-    _logAccounts();
-
-    property_trackingOfAmounts();
-
- }
-
- // forge test --match-test test_property_sum_of_losses_234 -vvv 
-function test_property_sum_of_losses_234() public {
-
-    shareClassManager_requestDeposit(43602155040298911376578015832982641843);
-
-    setMultiplier(391);
-
-    approveDeposits(43585908160105965676141232590212978390);
-
-    setMultiplier(1);
-
-    updateHolding();
-
-    setMultiplier(0);
-
-    updateHolding();
-    
+ function _logALot() internal {
     _logRequests();
     _logAccounts();
     _logCounters();
@@ -170,37 +102,6 @@ function test_property_sum_of_losses_234() public {
 
     console2.log("lossValue", lossValue);
     console2.log("int256(accounting.accountValue(poolId, LOSS_ACCOUNT))", int256(accounting.accountValue(poolId, LOSS_ACCOUNT)));
-
-    property_sum_of_losses();
-
- }
-// forge test --match-test test_property_sum_of_losses_abc -vvv 
-function test_property_sum_of_losses_abc() public {
-
-    shareClassManager_requestDeposit(100);
-
-    setMultiplier(1);
-
-    approveDeposits(100);
-
-    setMultiplier(0);
-
-    updateHolding();
-
-    _logRequests();
-    _logAccounts();
-    _logCounters();
-
-    (uint128 totalDebit, uint128 totalCredit, , , ) = accounting.accounts(poolId, LOSS_ACCOUNT);
-    console2.log("totalDebit", totalDebit);
-    console2.log("totalCredit", totalCredit);
-
-
-    console2.log("lossValue", lossValue);
-    console2.log("int256(accounting.accountValue(poolId, LOSS_ACCOUNT))", int256(accounting.accountValue(poolId, LOSS_ACCOUNT)));
-
-    property_sum_of_losses();
-
  }
 
     uint256 count;
