@@ -70,12 +70,14 @@ contract MockValuation {
 
 }
 
-
 abstract contract Setup is BaseSetup, ActorManager, AssetManager, Utils {
 
     ShareClassManager shareClassManager;
     MockHubRegistry mockRegistry;
+    // TODO: Add Handlers for valuation AND Track Value properties
     IERC7726 valuation;
+    IERC7726 transientValuation;
+    //
     PoolId poolId;
     ShareClassId scId;
     AssetId depositAssetId = AssetId.wrap(123);
@@ -104,6 +106,9 @@ abstract contract Setup is BaseSetup, ActorManager, AssetManager, Utils {
     int256 yieldValue;
     int256 lossValue;
 
+    // DYNAMIC REPLACEMENT
+    bool SKIP_ABOVE_INT128 = bool(true); // Should we ignore soundness properties past u128?
+
 
     /// === Setup === ///
     /// This contains all calls to be performed in the tester constructor, both for Echidna and Foundry
@@ -114,6 +119,7 @@ abstract contract Setup is BaseSetup, ActorManager, AssetManager, Utils {
 
         mockRegistry = new MockHubRegistry();
         valuation = IERC7726(address(new MockValuation()));
+        transientValuation = IERC7726(address(new MockValuation()));
         accounting = new Accounting(address(this)); 
         holdings  = new Holdings(IHubRegistry(address(mockRegistry)), address(this));
         holdings.rely(address(this));

@@ -32,6 +32,7 @@ import {D18, d18} from "src/misc/types/D18.sol";
 import {MockAdapter} from "test/common/mocks/MockAdapter.sol";
 import {MockGasService} from "test/common/mocks/MockGasService.sol";
 import {PoolManager} from "src/vaults/PoolManager.sol";
+import {AccountId} from "src/common/types/AccountId.sol";
 
 import {ShareClassManagerTargets} from "./targets/ShareClassManagerTargets.sol";
 import {MockValuation} from "./Setup.sol";
@@ -67,7 +68,8 @@ abstract contract TargetFunctions is
         } else if (diff < 0) {
 
             lossValue += diff; // Loss value <= 0
-            depositValue -= uint256(int256(-diff)); // Negative
+            console2.log("loss diff", diff);
+            depositValue -= uint256(-int256(diff)); // Negative
 
             accounting.addCredit(
                 ASSET_ACCOUNT, uint128(uint256(-int256(diff)))
@@ -83,8 +85,6 @@ abstract contract TargetFunctions is
     function approveDeposits(uint128 maxApproval)
         public
     {
-        require(maxApproval < 1e26); // Cap to more realistic values
-
         (uint128 approvedAssetAmount,) = /// Some amount at time X (dust) and new amounts at time closer to now
             shareClassManager.approveDeposits(poolId, scId, maxApproval, depositAssetId, valuation);
             
@@ -144,31 +144,139 @@ abstract contract TargetFunctions is
 
     // Put rest of state exploration for `shareClassManager`
     
-    // AFTER
-    // function updateHoldingAmount(
-    //     PoolId poolId,
-    //     ShareClassId scId,
-    //     AssetId assetId,
-    //     uint128 amount,
-    //     D18 pricePerUnit,
-    //     bool isIncrease,
-    //     JournalEntry[] memory debits,
-    //     JournalEntry[] memory credits
-    // ) public auth {
-    //     accounting.unlock(poolId);
-    //     address poolCurrency = hubRegistry.currency(poolId).addr();
-    //     transientValuation.setPrice(assetId.addr(), poolCurrency, pricePerUnit);
-    //     uint128 valueChange = transientValuation.getQuote(amount, assetId.addr(), poolCurrency).toUint128();
-    //     /// @audit the update here desynchs the holdings as the holdings remain unchanged, but we add values
-    //     (uint128 debited, uint128 credited) = _updateJournal(debits, credits);
-    //     uint128 debitValueLeft = valueChange - debited;
-    //     uint128 creditValueLeft = valueChange - credited;
 
-    //     _updateHoldingWithPartialDebitsAndCredits(
-    //         poolId, scId, assetId, amount, isIncrease, debitValueLeft, creditValueLeft
-    //     );
-    //     accounting.lock();
-    // }
+    // JournalEntry needs to be for one of the 4 accounts
+    // Same for the other
+
+    // Then we investigate the rest
+
+
+    // AFTER
+    function updateHoldingAmount(
+        uint128 amount,
+        // D18 pricePerUnit, NOTE: We skip updating price, it's updated by TargetFunctions
+        bool isIncrease,
+        uint256 debitIndex,
+        uint256 creditIndex,
+        uint128 debits,
+        uint128 credits
+    ) public {
+        _unlock();
+
+        // NOTE: Addresses are ignored
+        uint256 fullPrecisionChange = transientValuation.getQuote(amount, address(0), address(0));
+        require(fullPrecisionChange <= type(uint128).max, "Full precision change is too large");
+        uint128 valueChange = uint128(fullPrecisionChange);
+
+        /// @audit the update here desynchs the holdings as the holdings remain unchanged, but we add values
+
+        // Apply some debit and some credits
+        // Could be imbalanced | TODO: Which accounts can we use?
+        (uint128 debited, uint128 credited) = _updateJournal(debitIndex, debits, creditIndex, credits);
+        uint128 debitValueLeft = valueChange - debited;
+        uint128 creditValueLeft = valueChange - credited;
+
+        _updateHoldingWithPartialDebitsAndCredits(
+            amount,
+            isIncrease,
+            debitValueLeft,
+            creditValueLeft
+        );
+
+        _lock();
+        // TODO: Remove stateless and allow proper tracking
+        
+        eq(debitValueLeft, creditValueLeft, "We can never go past this with different values");
+            
+        revert("stateless");
+    }
+    
+    /// Simplified variant
+    function _updateJournal(uint256 debitIndex, uint128 debits, uint256 creditIndex, uint128 credits)
+        internal
+        returns (uint128 debited, uint128 credited)
+    {
+        
+        AccountId debitId = _getAccountIdFromNumber(debitIndex);
+        AccountId creditId = _getAccountIdFromNumber(creditIndex);
+
+        accounting.addDebit(debitId, debits);
+
+        accounting.addCredit(creditId, credits);
+
+        return (debits, credits);
+    }
+
+    function _getAccountIdFromNumber(uint256 index) internal returns (AccountId) {
+        uint256 normalizedIndex = index % 4;
+        // 0, 1, 2, 3
+        if(normalizedIndex == 0) {
+            return ASSET_ACCOUNT;
+        }
+
+        if(normalizedIndex == 1) {
+            return EQUITY_ACCOUNT;
+        }
+
+        if(normalizedIndex == 2) {
+            return LOSS_ACCOUNT;
+        }
+
+        if(normalizedIndex == 3) {
+            return GAIN_ACCOUNT;
+        }
+
+        t(false, "Invalid index");
+    }
+
+    function _updateHoldingWithPartialDebitsAndCredits(
+        uint128 amount,
+        bool isIncrease,
+        uint128 debitValue,
+        uint128 creditValue
+    ) internal {
+        bool isLiability = holdings.isLiability(poolId, scId, payoutAssetId); // False all the time
+        t(!isLiability, "isLiability"); // Always false
+
+        // 
+        // AccountType debitAccountType = isLiability ? AccountType.Expense : AccountType.Asset;
+        // AccountType creditAccountType = isLiability ? AccountType.Liability : AccountType.Equity;
+        
+
+        // Add X, Remove Y
+        /// Add Z - X on one side, add Z + Y  on the other, I think either there's zeros or they must be the same value
+
+        if (isIncrease) {
+            holdings.increase(poolId, scId, payoutAssetId, transientValuation, amount); /// @audit I think this breaks the property
+            // accounting.addDebit(, debitValue);
+            // accounting.addCredit(, creditValue);
+
+            // TODO: Are these correct? NOTE: NO THIS CAN'T BE
+            // TODO: How would this become correct? TOOD: Go back to properties
+            // depositValue = depositValue + (int256(uint256(creditValue)) - int256(uint256(debitValue)));
+            yieldValue = yieldValue + (int256(uint256(creditValue)) - int256(uint256(debitValue)));
+
+            // Increase in equity, decrease in asset?
+            accounting.addCredit(EQUITY_ACCOUNT, creditValue);
+            accounting.addDebit(ASSET_ACCOUNT, debitValue); /// @audit this could be both higher or lower
+
+        } else {
+            // Loss of equity, increase in asset?
+            holdings.decrease(poolId, scId, payoutAssetId, transientValuation, amount);
+            accounting.addCredit(ASSET_ACCOUNT, creditValue);
+            accounting.addDebit(EQUITY_ACCOUNT, debitValue);
+            
+            // depositValue = depositValue + ((debitValue)) - int256(uint256(creditValue)));
+            yieldValue = yieldValue + (int256(uint256(debitValue)) - int256(uint256(creditValue)));
+        }
+    }
+
+
+    /// Q: from first principles are we adding Principal or Yield?
+
+            
+            
+
 
     /// AUTO GENERATED TARGET FUNCTIONS - WARNING: DO NOT DELETE OR MODIFY THIS LINE ///
 }

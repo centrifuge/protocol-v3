@@ -130,8 +130,88 @@ function test_property_sum_of_losses_0() public {
 
  }
 
+// forge test --match-test test_property_trackingOfAmounts_0 -vvv 
+function test_property_trackingOfAmounts_0() public {
+
+    updateHoldingAmount(1,true,0,0,0,0);
+
+    _logRequests();
+    _logAccounts();
+
+    property_trackingOfAmounts();
+
+ }
+
+ // forge test --match-test test_property_sum_of_losses_234 -vvv 
+function test_property_sum_of_losses_234() public {
+
+    shareClassManager_requestDeposit(43602155040298911376578015832982641843);
+
+    setMultiplier(391);
+
+    approveDeposits(43585908160105965676141232590212978390);
+
+    setMultiplier(1);
+
+    updateHolding();
+
+    setMultiplier(0);
+
+    updateHolding();
+    
+    _logRequests();
+    _logAccounts();
+    _logCounters();
+
+    (uint128 totalDebit, uint128 totalCredit, , , ) = accounting.accounts(poolId, LOSS_ACCOUNT);
+    console2.log("totalDebit", totalDebit);
+    console2.log("totalCredit", totalCredit);
+
+
+    console2.log("lossValue", lossValue);
+    console2.log("int256(accounting.accountValue(poolId, LOSS_ACCOUNT))", int256(accounting.accountValue(poolId, LOSS_ACCOUNT)));
+
+    property_sum_of_losses();
+
+ }
+// forge test --match-test test_property_sum_of_losses_abc -vvv 
+function test_property_sum_of_losses_abc() public {
+
+    shareClassManager_requestDeposit(100);
+
+    setMultiplier(1);
+
+    approveDeposits(100);
+
+    setMultiplier(0);
+
+    updateHolding();
+
+    _logRequests();
+    _logAccounts();
+    _logCounters();
+
+    (uint128 totalDebit, uint128 totalCredit, , , ) = accounting.accounts(poolId, LOSS_ACCOUNT);
+    console2.log("totalDebit", totalDebit);
+    console2.log("totalCredit", totalCredit);
+
+
+    console2.log("lossValue", lossValue);
+    console2.log("int256(accounting.accountValue(poolId, LOSS_ACCOUNT))", int256(accounting.accountValue(poolId, LOSS_ACCOUNT)));
+
+    property_sum_of_losses();
+
+ }
+
     uint256 count;
-    function _logRequests() public {
+
+    function _logCounters() internal {
+      console2.log("depositAmt", depositAmt)  ;
+      console2.log("depositValue", depositValue);
+      console2.log("yieldValue", yieldValue);
+      console2.log("lossValue", lossValue);
+    }
+    function _logRequests() internal {
         console2.log("");
         console2.log("");
         console2.log("_logRequests", count++);
@@ -155,6 +235,13 @@ function test_property_sum_of_losses_0() public {
             (bool isCancelling, uint128 queuedRedeemRequest) = shareClassManager.queuedRedeemRequest(scId, depositAssetId, bytes32(uint256(uint160(_getActor()))));
             console2.log("queuedRedeemRequest", queuedRedeemRequest);
         }
+    }
+
+    function _logAccounts() public {
+      console2.log("accounting.accountValue(poolId, LOSS_ACCOUNT)", accounting.accountValue(poolId, LOSS_ACCOUNT));
+      console2.log("accounting.accountValue(poolId, GAIN_ACCOUNT)", accounting.accountValue(poolId, GAIN_ACCOUNT));
+      console2.log("accounting.accountValue(poolId, ASSET_ACCOUNT)", accounting.accountValue(poolId, ASSET_ACCOUNT));
+      console2.log("accounting.accountValue(poolId, EQUITY_ACCOUNT)", accounting.accountValue(poolId, EQUITY_ACCOUNT));
     }
 
 
