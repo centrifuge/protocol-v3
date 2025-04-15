@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {ERC20} from "src/misc/ERC20.sol";
 import {D18, d18} from "src/misc/types/D18.sol";
 import {IERC7726} from "src/misc/interfaces/IERC7726.sol";
+import {CastLib} from "src/misc/libraries/CastLib.sol";
 
 import {ISafe} from "src/common/interfaces/IGuardian.sol";
 import {VaultUpdateKind} from "src/common/libraries/MessageLib.sol";
@@ -20,6 +21,7 @@ import {FullDeployer, HubDeployer, VaultsDeployer} from "script/FullDeployer.s.s
 
 // Script to deploy Hub and Vaults with a Localhost Adapter.
 contract LocalhostDeployer is FullDeployer {
+    using CastLib for address;
     using MessageLib for *;
 
     function run() public {
@@ -92,7 +94,7 @@ contract LocalhostDeployer is FullDeployer {
             }).serialize()
         );
 
-        hub.updatePricePoolPerShare(poolId, scId, navPerShare, "");
+        hub.updatePricePerShare(poolId, scId, navPerShare);
         hub.notifySharePrice(poolId, centrifugeId, scId);
         hub.notifyAssetPrice(poolId, scId, assetId);
 
@@ -105,12 +107,11 @@ contract LocalhostDeployer is FullDeployer {
         vault.requestDeposit(investAmount, msg.sender, msg.sender);
 
         // Fulfill deposit request
-        IERC7726 valuation = holdings.valuation(poolId, scId, assetId);
+        hub.approveDeposits(poolId, scId, assetId, shareClassManager.nowDepositEpoch(scId, assetId), investAmount);
+        hub.issueShares(poolId, scId, assetId, shareClassManager.nowIssueEpoch(scId, assetId), navPerShare);
 
-        hub.approveDeposits(poolId, scId, assetId, investAmount, valuation);
-        hub.issueShares(poolId, scId, assetId, navPerShare);
-
-        hub.claimDeposit(poolId, scId, assetId, bytes32(bytes20(msg.sender)));
+        uint32 maxClaims = shareClassManager.maxDepositClaims(scId, msg.sender.toBytes32(), assetId);
+        hub.claimDeposit(poolId, scId, assetId, msg.sender.toBytes32(), maxClaims);
 
         // Claim deposit request
         vault.mint(investAmount, msg.sender);
@@ -155,7 +156,7 @@ contract LocalhostDeployer is FullDeployer {
             }).serialize()
         );
 
-        hub.updatePricePoolPerShare(poolId, scId, navPerShare, "");
+        hub.updatePricePerShare(poolId, scId, navPerShare);
         hub.notifySharePrice(poolId, centrifugeId, scId);
         hub.notifyAssetPrice(poolId, scId, assetId);
 
