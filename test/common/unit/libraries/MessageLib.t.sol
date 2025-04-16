@@ -586,7 +586,6 @@ contract TestMessageLibIdentities is Test {
     function testUpdateShares(
         uint64 poolId,
         bytes16 scId,
-        bytes32 who,
         uint128 pricePerShare,
         uint128 shares,
         uint64 timestamp,
@@ -595,7 +594,6 @@ contract TestMessageLibIdentities is Test {
         MessageLib.UpdateShares memory a = MessageLib.UpdateShares({
             poolId: poolId,
             scId: scId,
-            who: who,
             pricePerShare: pricePerShare,
             shares: shares,
             timestamp: timestamp,
@@ -606,7 +604,6 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.poolId, b.poolId);
         assertEq(a.scId, b.scId);
-        assertEq(a.who, b.who);
         assertEq(a.shares, b.shares);
         assertEq(a.pricePerShare, b.pricePerShare);
         assertEq(a.timestamp, b.timestamp);
@@ -704,6 +701,31 @@ contract TestMessageLibIdentities is Test {
         assertEq(a.pricePerShare, b.pricePerShare);
         assertEq(a.shares, b.shares);
         assertEq(a.isIssuance, b.isIssuance);
+
+        assertEq(a.serialize().messageLength(), a.serialize().length);
+        assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+    }
+
+    function testTriggerSubmitQueuedShares(uint64 poolId, bytes16 scId) public pure {
+        MessageLib.TriggerSubmitQueuedShares memory a =
+            MessageLib.TriggerSubmitQueuedShares({poolId: poolId, scId: scId});
+        MessageLib.TriggerSubmitQueuedShares memory b = MessageLib.deserializeTriggerSubmitQueuedShares(a.serialize());
+
+        assertEq(a.poolId, b.poolId);
+        assertEq(a.scId, b.scId);
+
+        assertEq(a.serialize().messageLength(), a.serialize().length);
+        assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+    }
+
+    function testTriggerSubmitQueuedAssets(uint64 poolId, bytes16 scId, uint128 assetId) public pure {
+        MessageLib.TriggerSubmitQueuedAssets memory a =
+            MessageLib.TriggerSubmitQueuedAssets({poolId: poolId, scId: scId, assetId: assetId});
+        MessageLib.TriggerSubmitQueuedAssets memory b = MessageLib.deserializeTriggerSubmitQueuedAssets(a.serialize());
+
+        assertEq(a.poolId, b.poolId);
+        assertEq(a.scId, b.scId);
+        assertEq(a.assetId, b.assetId);
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
