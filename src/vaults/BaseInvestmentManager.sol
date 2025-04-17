@@ -16,23 +16,24 @@ import {IBaseVault} from "src/vaults/interfaces/IERC7540.sol";
 import {IPoolManager, VaultDetails} from "src/vaults/interfaces/IPoolManager.sol";
 import {IBaseInvestmentManager} from "src/vaults/interfaces/investments/IBaseInvestmentManager.sol";
 import {VaultPricingLib} from "src/vaults/libraries/VaultPricingLib.sol";
+import {IPoolEscrowProvider} from "src/vaults/interfaces/factories/IPoolEscrowFactory.sol";
 
 abstract contract BaseInvestmentManager is Auth, Recoverable, IBaseInvestmentManager {
     using MathLib for uint256;
 
     address public immutable root;
-    address public immutable escrow;
 
     IPoolManager public poolManager;
+    IPoolEscrowProvider public poolEscrowProvider;
 
-    constructor(address root_, address escrow_, address deployer) Auth(deployer) {
+    constructor(address root_, address deployer) Auth(deployer) {
         root = root_;
-        escrow = escrow_;
     }
 
     /// @inheritdoc IBaseInvestmentManager
     function file(bytes32 what, address data) external virtual auth {
         if (what == "poolManager") poolManager = IPoolManager(data);
+        else if (what == "poolEscrowProvider") poolEscrowProvider = IPoolEscrowProvider(data);
         else revert FileUnrecognizedParam();
         emit File(what, data);
     }
@@ -67,6 +68,17 @@ abstract contract BaseInvestmentManager is Auth, Recoverable, IBaseInvestmentMan
             poolManager.priceAssetPerShare(mapPoolId(vault_.poolId()), vault_.trancheId(), vaultDetails.assetId, false);
     }
 
+    /// @inheritdoc IBaseInvestmentManager
+    function escrow() public view returns (address) {
+        (bool success, bytes memory result) = msg.sender.staticcall(abi.encodeWithSelector(IBaseVault.poolId.selector));
+
+        require(success && result.length == 32, SenderNotVault());
+
+        uint64 poolId = abi.decode(result, (uint64));
+        return address(poolEscrowProvider.escrow(poolId));
+    }
+
+    /// @inheritdoc IBaseInvestmentManager
     function mapPoolId(uint64 poolId) public pure returns (uint64 mappedPoolId) {
         // TODO: update v2CentrifugeId and add all pools before deployment
         uint16 v2CentrifugeId = 1;
