@@ -155,5 +155,10 @@ abstract contract Properties is BeforeAfter, Asserts {
     function property_holdings_amount_is_consistent_with_average_valuation() public {
         // TODO: This property will prob take a while
     }
+
+    // TODO: Property to connect Holdings and SCM
+    // TotalIssuance
+    // Math per Share = Value of All Assets / Total Issuance
+    // Value of all assets - liabilities
         
 }
