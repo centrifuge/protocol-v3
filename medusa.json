@@ -5,19 +5,19 @@
     "timeout": 0,
     "testLimit": 0,
     "callSequenceLength": 100,
-    "corpusDirectory": "medusa-aggregator",
+    "corpusDirectory": "medusa",
     "coverageEnabled": true,
     "deploymentOrder": [
-      "CryticAggregatorTester"
+      "CryticTester"
     ],
     "targetContracts": [
-      "CryticAggregatorTester"
+      "CryticTester"
     ],
     "targetContractsBalances": [
       "0x27b46536c66c8e3000000"
     ],
     "constructorArgs": {},
-    "deployerAddress": "0x30000",
+    "deployerAddress": "0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496",
     "senderAddresses": [
       "0x10000",
       "0x20000",
@@ -76,7 +76,9 @@
       "target": ".",
       "solcVersion": "",
       "exportDirectory": "",
-      "args": ["--foundry-compile-all"]
+      "args": [
+        "--foundry-compile-all"
+      ]
     }
   },
   "logging": {

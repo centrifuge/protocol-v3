@@ -4,26 +4,38 @@
 pragma solidity 0.8.28;
 
 // Recon Deps
-import {BaseTargetFunctions} from "@chimera/BaseTargetFunctions.sol";
-import {Properties} from "../Properties.sol";
 import {vm} from "@chimera/Hevm.sol";
+import {BaseTargetFunctions} from "@chimera/BaseTargetFunctions.sol";
+import {MockERC20} from "@recon/MockERC20.sol";
+import {console2} from "forge-std/console2.sol";
 
-// Src Deps | For cycling of values
+// Types
+import {PoolId} from "src/common/types/PoolId.sol";
+import {ShareClassId} from "src/common/types/ShareClassId.sol";
+import {AssetId} from "src/common/types/AssetId.sol";
+
+// Src Deps 
 import {AsyncVault} from "src/vaults/AsyncVault.sol";
 import {ERC20} from "src/misc/ERC20.sol";
 import {CentrifugeToken} from "src/vaults/token/ShareToken.sol";
 import {RestrictedTransfers} from "src/hooks/RestrictedTransfers.sol";
 
+import {Properties} from "../properties/Properties.sol";
+import {OpType} from "../BeforeAfter.sol";
+
 /// @dev Separate the 5 Callbacks that go from Gateway to AsyncRequests
 /**
  */
-abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
+abstract contract VaultCallbackTargets is BaseTargetFunctions, Properties {
     /// @dev Callback to requestDeposit
     function asyncRequests_fulfillDepositRequest(
         uint128 currencyPayout,
         uint128 tokenPayout,
-        uint128 /*decreaseByAmount*/
-    ) public {
+        uint128 /*decreaseByAmount*/,
+        uint256 investorEntropy
+    ) public notGovFuzzing updateGhostsWithType(OpType.ADMIN) {
+        address investor = _getRandomActor(investorEntropy);
+
         /// === CLAMP `currencyPayout` === ///
         {
             (
@@ -45,7 +57,7 @@ abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
                 /*bool pendingCancelDepositRequest*/
                 ,
                 /*bool pendingCancelRedeemRequest*/
-            ) = asyncRequests.investments(address(vault), address(actor));
+            ) = asyncRequests.investments(address(vault), investor);
 
             /// @audit DANGEROUS TODO: Clamp so we ensure we never give remaining above what was sent, fully trusted
             /// value
@@ -59,10 +71,14 @@ abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
                 // TODO(@hieronx): revisit clamps here
                 currencyPayout %= pendingDepositRequest; // Needs to be capped at this value
             }
+            console2.log("pendingDepositRequest in fulfillDepositRequest", pendingDepositRequest);
+
         }
 
-        asyncRequests.fulfillDepositRequest(poolId, scId, actor, assetId, currencyPayout, tokenPayout);
+        console2.log("currencyPayout in fulfillDepositRequest", currencyPayout);
+        asyncRequests.fulfillDepositRequest(poolId, scId, investor, assetId, currencyPayout, tokenPayout);
 
+        balanceSheet.approvedDeposits(PoolId.wrap(poolId), ShareClassId.wrap(scId), AssetId.wrap(assetId), currencyPayout);
         // E-2 | Global-1
         sumOfFullfilledDeposits[address(token)] += tokenPayout;
 
@@ -73,7 +89,9 @@ abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
     }
 
     /// @dev Callback to requestRedeem
-    function asyncRequests_fulfillRedeemRequest(uint128 currencyPayout, uint128 tokenPayout) public {
+    function asyncRequests_fulfillRedeemRequest(uint128 currencyPayout, uint128 tokenPayout, uint256 investorEntropy) public notGovFuzzing updateGhostsWithType(OpType.ADMIN) {
+        address investor = _getRandomActor(investorEntropy);
+
         /// === CLAMP `tokenPayout` === ///
         {
             (
@@ -95,7 +113,7 @@ abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
                 /*bool pendingCancelDepositRequest*/
                 ,
                 /*bool pendingCancelRedeemRequest*/
-            ) = asyncRequests.investments(address(vault), address(actor));
+            ) = asyncRequests.investments(address(vault), investor);
 
             /// @audit DANGEROUS TODO: Clamp so we ensure we never give remaining above what was sent, fully trusted
             /// value
@@ -115,12 +133,14 @@ abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
 
         // TODO: Re check
         // // TODO: test_invariant_asyncVault_10_w_recon
-        assetErc20.mint(address(escrow), currencyPayout);
-        mintedByCurrencyPayout[address(assetErc20)] += currencyPayout;
+        MockERC20(_getAsset()).mint(address(escrow), currencyPayout);
+        mintedByCurrencyPayout[_getAsset()] += currencyPayout;
         // /// @audit We mint payout here which has to be paid by the borrowers
         // // END TODO test_invariant_asyncVault_10_w_recon
 
-        asyncRequests.fulfillRedeemRequest(poolId, scId, actor, assetId, currencyPayout, tokenPayout);
+        asyncRequests.fulfillRedeemRequest(poolId, scId, investor, assetId, currencyPayout, tokenPayout);
+
+        balanceSheet.revokedShares(PoolId.wrap(poolId), ShareClassId.wrap(scId), AssetId.wrap(assetId), currencyPayout);
 
         sumOfClaimedRequests[address(token)] += tokenPayout;
 
@@ -136,10 +156,12 @@ abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
 
     /// @dev Callback to `cancelDepositRequest`
     /// @dev NOTE: Share -> decreaseByAmount is linear!
-    function asyncRequests_fulfillCancelDepositRequest(uint128 currencyPayout) public {
+    function asyncRequests_fulfillCancelDepositRequest(uint128 currencyPayout, uint256 investorEntropy) public notGovFuzzing updateGhostsWithType(OpType.ADMIN) {
         /// === CLAMP `currencyPayout` === ///
-        // Require that the actor has done the request
-        require(vault.pendingCancelDepositRequest(0, actor));
+        address investor = _getRandomActor(investorEntropy);
+
+        // Require that the investor has created a deposit request
+        require(vault.pendingCancelDepositRequest(0, investor));
         {
             (
                 /*uint128 maxMint*/
@@ -160,7 +182,7 @@ abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
                 /*bool pendingCancelDepositRequest*/
                 ,
                 /*bool pendingCancelRedeemRequest*/
-            ) = asyncRequests.investments(address(vault), address(actor));
+            ) = asyncRequests.investments(address(vault), investor);
 
             /// @audit DANGEROUS TODO: Clamp so we ensure we never give remaining above what was sent, fully trusted
             /// value
@@ -179,21 +201,22 @@ abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
         // Need to cap remainingInvestOrder by the shares?
 
         // TODO: Would they set the order to a higher value?
-        asyncRequests.fulfillCancelDepositRequest(poolId, scId, actor, assetId, currencyPayout, currencyPayout);
+        asyncRequests.fulfillCancelDepositRequest(poolId, scId, investor, assetId, currencyPayout, currencyPayout);
         /// @audit Reduced by: currencyPayout
 
-        cancelDepositCurrencyPayout[address(assetErc20)] += currencyPayout;
+        cancelDepositCurrencyPayout[_getAsset()] += currencyPayout;
 
         __globals();
     }
 
     /// @dev Callback to `cancelRedeemRequest`
     /// @dev NOTE: Share -> decreaseByAmount is linear!
-    function asyncRequests_fulfillCancelRedeemRequest(uint128 tokenPayout) public {
+    function asyncRequests_fulfillCancelRedeemRequest(uint128 tokenPayout, uint256 investorEntropy) public notGovFuzzing updateGhostsWithType(OpType.ADMIN) {
         // Require that the actor has done the request
 
         /// === CLAMP `tokenPayout` === ///
-        require(vault.pendingCancelRedeemRequest(0, actor));
+        address investor = _getRandomActor(investorEntropy);
+        require(vault.pendingCancelRedeemRequest(0, investor));
 
         {
             (
@@ -215,7 +238,7 @@ abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
                 /*bool pendingCancelDepositRequest*/
                 ,
                 /*bool pendingCancelRedeemRequest*/
-            ) = asyncRequests.investments(address(vault), address(actor));
+            ) = asyncRequests.investments(address(vault), investor);
 
             /// @audit DANGEROUS TODO: Clamp so we ensure we never give remaining above what was sent, fully trusted
             /// value
@@ -230,7 +253,7 @@ abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
             }
         }
 
-        asyncRequests.fulfillCancelRedeemRequest(poolId, scId, actor, assetId, tokenPayout);
+        asyncRequests.fulfillCancelRedeemRequest(poolId, scId, investor, assetId, tokenPayout);
         /// @audit tokenPayout
 
         cancelRedeemShareTokenPayout[address(token)] += tokenPayout;
@@ -241,11 +264,11 @@ abstract contract VaultCallbacks is BaseTargetFunctions, Properties {
     // NOTE: TODO: We should remove this and consider a separate test, if we go by the FSM
     // FSM -> depps
     // function asyncRequests_triggerRedeemRequest(uint128 tokenAmount) public {
-    //     uint256 balB4 = token.balanceOf(actor);
+    //     uint256 balB4 = token.balanceOf(_getActor());
 
-    //     asyncRequests.triggerRedeemRequest(poolId, scId, actor, assetId, tokenAmount);
+    //     asyncRequests.triggerRedeemRequest(poolId, scId, _getActor(), assetId, tokenAmount);
 
-    //     uint256 balAfter = token.balanceOf(actor);
+    //     uint256 balAfter = token.balanceOf(_getActor());
 
     //     // E-2 /// @audit TODO: Forcefully moves tokens from user to here only if a transfer happened
     //     sumOfRedeemRequests[(address(token))] += balB4 - balAfter;

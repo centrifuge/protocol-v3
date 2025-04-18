@@ -3,12 +3,14 @@ pragma solidity 0.8.28;
 
 // Recon Deps
 import {BaseTargetFunctions} from "@chimera/BaseTargetFunctions.sol";
-import {Properties} from "../Properties.sol";
 import {vm} from "@chimera/Hevm.sol";
+import {MockERC20} from "@recon/MockERC20.sol";
+import {console2} from "forge-std/console2.sol";
 
 // Dependencies
-import {ERC20} from "src/misc/ERC20.sol";
 import {AsyncVault} from "src/vaults/AsyncVault.sol";
+
+import {Properties} from "../properties/Properties.sol";
 
 /**
  * A collection of handlers that interact with the Liquidity Pool
@@ -18,52 +20,56 @@ import {AsyncVault} from "src/vaults/AsyncVault.sol";
  * - vault_emitRedeemClaimable
  * - vault_file
  */
-abstract contract VaultFunctions is BaseTargetFunctions, Properties {
-    /// @dev Get the balance of the current assetErc20 and actor
+abstract contract VaultTargets is BaseTargetFunctions, Properties {
+    /// @dev Get the balance of the current assetErc20 and _getActor()
     function _getTokenAndBalanceForVault() internal view returns (uint256) {
         // Token
-        uint256 amt = assetErc20.balanceOf(actor);
+        uint256 amt = MockERC20(_getAsset()).balanceOf(_getActor());
 
         return amt;
     }
 
     // === REQUEST === //
-    function vault_requestDeposit(uint256 assets) public {
+    function vault_requestDeposit(uint256 assets, uint256 toEntropy) public updateGhosts {
         assets = between(assets, 0, _getTokenAndBalanceForVault());
 
-        assetErc20.approve(address(vault), assets);
-        address to = actor; // NOTE: We transfer to self for now
+        vm.prank(_getActor());
+        MockERC20(_getAsset()).approve(address(vault), assets);
+        address to = _getRandomActor(toEntropy);
 
         // B4 Balances
-        uint256 balanceB4 = assetErc20.balanceOf(actor);
-        uint256 balanceOfEscrowB4 = assetErc20.balanceOf(address(escrow));
+        uint256 balanceB4 = MockERC20(_getAsset()).balanceOf(_getActor());
+        uint256 balanceOfEscrowB4 = MockERC20(_getAsset()).balanceOf(address(escrow));
 
         bool hasReverted;
-        try vault.requestDeposit(assets, to, actor) {
-            // TF-1
-            sumOfDepositRequests[address(assetErc20)] += assets;
 
-            requestDepositAssets[actor][address(assetErc20)] += assets;
+        // NOTE: external calls above so need to prank directly here
+        vm.prank(_getActor());
+        try vault.requestDeposit(assets, to, _getActor()) {
+            // TF-1
+            sumOfDepositRequests[address(_getAsset())] += assets;
+
+            requestDepositAssets[_getActor()][address(_getAsset())] += assets;
         } catch {
             hasReverted = true;
         }
 
         // If not member
-        (bool isMember,) = restrictedTransfers.isMember(address(token), actor);
+        (bool isMember,) = restrictedTransfers.isMember(address(token), _getActor());
         if (!isMember) {
             t(hasReverted, "LP-1 Must Revert");
         }
 
         if (
-            restrictedTransfers.isFrozen(address(token), actor) == true
+            restrictedTransfers.isFrozen(address(token), _getActor()) == true
                 || restrictedTransfers.isFrozen(address(token), to) == true
         ) {
             t(hasReverted, "LP-2 Must Revert");
         }
 
         // After Balances and Checks
-        uint256 balanceAfter = assetErc20.balanceOf(actor);
-        uint256 balanceOfEscrowAfter = assetErc20.balanceOf(address(escrow));
+        uint256 balanceAfter = MockERC20(_getAsset()).balanceOf(_getActor());
+        uint256 balanceOfEscrowAfter = MockERC20(_getAsset()).balanceOf(address(escrow));
 
         // NOTE: We only enforce the check if the tx didn't revert
         if (!hasReverted) {
@@ -80,32 +86,35 @@ abstract contract VaultFunctions is BaseTargetFunctions, Properties {
         }
     }
 
-    function vault_requestRedeem(uint256 shares) public {
-        address to = actor; // TODO: donation / changes
+    function vault_requestRedeem(uint256 shares, uint256 toEntropy) public updateGhosts {
+        address to = _getRandomActor(toEntropy); // TODO: donation / changes
 
         // B4 Balances
-        uint256 balanceB4 = token.balanceOf(actor);
+        uint256 balanceB4 = token.balanceOf(_getActor());
         uint256 balanceOfEscrowB4 = token.balanceOf(address(escrow));
 
+        vm.prank(_getActor());
         token.approve(address(vault), shares);
 
         bool hasReverted;
-        try vault.requestRedeem(shares, to, actor) {
+        // NOTE: external calls above so need to prank directly here
+        vm.prank(_getActor());
+        try vault.requestRedeem(shares, to, _getActor()) {
             sumOfRedeemRequests[address(token)] += shares; // E-2
-            requestRedeemShares[actor][address(token)] += shares;
+            requestRedeemShares[_getActor()][address(token)] += shares;
         } catch {
             hasReverted = true;
         }
 
         if (
-            restrictedTransfers.isFrozen(address(token), actor) == true
+            restrictedTransfers.isFrozen(address(token), _getActor()) == true
                 || restrictedTransfers.isFrozen(address(token), to) == true
         ) {
             t(hasReverted, "LP-2 Must Revert");
         }
 
         // After Balances and Checks
-        uint256 balanceAfter = token.balanceOf(actor);
+        uint256 balanceAfter = token.balanceOf(_getActor());
         uint256 balanceOfEscrowAfter = token.balanceOf(address(escrow));
 
         // NOTE: We only enforce the check if the tx didn't revert
@@ -129,40 +138,42 @@ abstract contract VaultFunctions is BaseTargetFunctions, Properties {
 
     // === CANCEL === //
 
-    function vault_cancelDepositRequest() public {
-        vault.cancelDepositRequest(REQUEST_ID, actor);
+    function vault_cancelDepositRequest() public updateGhosts asActor {
+        vault.cancelDepositRequest(REQUEST_ID, _getActor());
     }
 
-    function vault_cancelRedeemRequest() public {
-        vault.cancelRedeemRequest(REQUEST_ID, actor);
+    function vault_cancelRedeemRequest() public updateGhosts asActor {
+        vault.cancelRedeemRequest(REQUEST_ID, _getActor());
     }
 
-    function vault_claimCancelDepositRequest() public {
-        address to = actor; // NOTE: We transfer to self for now
+    function vault_claimCancelDepositRequest(uint256 toEntropy) public updateGhosts asActor {
+        address to = _getRandomActor(toEntropy);
 
-        uint256 assets = vault.claimCancelDepositRequest(REQUEST_ID, to, actor);
-        sumOfClaimedDepositCancelations[address(assetErc20)] += assets;
+        uint256 assets = vault.claimCancelDepositRequest(REQUEST_ID, to, _getActor());
+        sumOfClaimedDepositCancelations[address(_getAsset())] += assets;
     }
 
-    function vault_claimCancelRedeemRequest() public {
-        address to = actor; // NOTE: We transfer to self for now
+    function vault_claimCancelRedeemRequest(uint256 toEntropy) public updateGhosts asActor {
+        address to = _getRandomActor(toEntropy);
 
-        uint256 shares = vault.claimCancelRedeemRequest(REQUEST_ID, to, actor);
+        uint256 shares = vault.claimCancelRedeemRequest(REQUEST_ID, to, _getActor());
         sumOfClaimedRedeemCancelations[address(token)] += shares;
     }
 
-    function vault_deposit(uint256 assets) public {
+    function vault_deposit(uint256 assets) public updateGhosts {
         // Bal b4
-        uint256 shareUserB4 = token.balanceOf(actor);
+        uint256 shareUserB4 = token.balanceOf(_getActor());
         uint256 shareEscrowB4 = token.balanceOf(address(escrow));
 
-        uint256 shares = vault.deposit(assets, address(this));
+        // NOTE: external calls above so need to prank directly here
+        vm.prank(_getActor());
+        uint256 shares = vault.deposit(assets, _getActor());
 
         // Processed Deposit | E-2 | Global-1
         sumOfClaimedDeposits[address(token)] += shares;
 
         // Bal after
-        uint256 shareUserAfter = token.balanceOf(actor);
+        uint256 shareUserAfter = token.balanceOf(_getActor());
         uint256 shareEscrowAfter = token.balanceOf(address(escrow));
 
         // Extra check | // TODO: This math will prob overflow
@@ -190,20 +201,22 @@ abstract contract VaultFunctions is BaseTargetFunctions, Properties {
 
     // TODO: See how these go
     // TODO: Receiver -> Not this
-    function vault_mint(uint256 shares) public {
-        address to = actor; // TODO: donation / changes
+    function vault_mint(uint256 shares, uint256 toEntropy) public updateGhosts {
+        address to = _getRandomActor(toEntropy);
 
         // Bal b4
-        uint256 shareUserB4 = token.balanceOf(actor);
+        uint256 shareUserB4 = token.balanceOf(_getActor());
         uint256 shareEscrowB4 = token.balanceOf(address(escrow));
 
+        // NOTE: external calls above so need to prank directly here
+        vm.prank(_getActor());
         vault.mint(shares, to);
 
         // Processed Deposit | E-2
         sumOfClaimedDeposits[address(token)] += shares;
 
         // Bal after
-        uint256 shareUserAfter = token.balanceOf(actor);
+        uint256 shareUserAfter = token.balanceOf(_getActor());
         uint256 shareEscrowAfter = token.balanceOf(address(escrow));
 
         // Extra check | // TODO: This math will prob overflow
@@ -223,22 +236,23 @@ abstract contract VaultFunctions is BaseTargetFunctions, Properties {
         }
     }
 
-    // TODO: Params
-    function vault_redeem(uint256 shares) public {
-        address to = actor; // TODO: donation / changes
+    function vault_redeem(uint256 shares, uint256 toEntropy) public updateGhosts {
+        address to = _getRandomActor(toEntropy);
 
         // Bal b4
-        uint256 tokenUserB4 = assetErc20.balanceOf(actor);
-        uint256 tokenEscrowB4 = assetErc20.balanceOf(address(escrow));
+        uint256 tokenUserB4 = MockERC20(_getAsset()).balanceOf(_getActor());
+        uint256 tokenEscrowB4 = MockERC20(_getAsset()).balanceOf(address(escrow));
 
-        uint256 assets = vault.redeem(shares, actor, to);
+        // NOTE: external calls above so need to prank directly here
+        vm.prank(_getActor());
+        uint256 assets = vault.redeem(shares, to, _getActor());
 
         // E-1
-        sumOfClaimedRedemptions[address(assetErc20)] += assets;
+        sumOfClaimedRedemptions[address(_getAsset())] += assets;
 
         // Bal after
-        uint256 tokenUserAfter = assetErc20.balanceOf(actor);
-        uint256 tokenEscrowAfter = assetErc20.balanceOf(address(escrow));
+        uint256 tokenUserAfter = MockERC20(_getAsset()).balanceOf(_getActor());
+        uint256 tokenEscrowAfter = MockERC20(_getAsset()).balanceOf(address(escrow));
 
         // Extra check | // TODO: This math will prob overflow
         // NOTE: Unchecked so we get broken property and debug faster
@@ -246,7 +260,7 @@ abstract contract VaultFunctions is BaseTargetFunctions, Properties {
             uint256 deltaUser = tokenUserAfter - tokenUserB4;
 
             // TODO: NOTE FOT extra, verifies the transfer amount matches the returned amount
-            t(deltaUser == assets, "FoT-1");
+            eq(deltaUser, assets, "FoT-1");
 
             uint256 deltaEscrow = tokenEscrowB4 - tokenEscrowAfter;
             emit DebugNumber(deltaUser);
@@ -261,22 +275,23 @@ abstract contract VaultFunctions is BaseTargetFunctions, Properties {
         }
     }
 
-    // TODO: Params
-    function vault_withdraw(uint256 assets) public {
-        address to = actor; // TODO: donation / changes
+    function vault_withdraw(uint256 assets, uint256 toEntropy) public updateGhosts {
+        address to = _getRandomActor(toEntropy);
 
         // Bal b4
-        uint256 tokenUserB4 = assetErc20.balanceOf(actor);
-        uint256 tokenEscrowB4 = assetErc20.balanceOf(address(escrow));
+        uint256 tokenUserB4 = MockERC20(_getAsset()).balanceOf(_getActor());
+        uint256 tokenEscrowB4 = MockERC20(_getAsset()).balanceOf(address(escrow));
 
-        vault.withdraw(assets, actor, to);
+        // NOTE: external calls above so need to prank directly here
+        vm.prank(_getActor());
+        vault.withdraw(assets, to, _getActor());
 
         // E-1
-        sumOfClaimedRedemptions[address(assetErc20)] += assets;
+        sumOfClaimedRedemptions[address(_getAsset())] += assets;
 
         // Bal after
-        uint256 tokenUserAfter = assetErc20.balanceOf(actor);
-        uint256 tokenEscrowAfter = assetErc20.balanceOf(address(escrow));
+        uint256 tokenUserAfter = MockERC20(_getAsset()).balanceOf(_getActor());
+        uint256 tokenEscrowAfter = MockERC20(_getAsset()).balanceOf(address(escrow));
 
         // Extra check | // TODO: This math will prob overflow
         // NOTE: Unchecked so we get broken property and debug faster

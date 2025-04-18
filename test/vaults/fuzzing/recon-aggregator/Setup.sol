@@ -3,10 +3,13 @@ pragma solidity ^0.8.0;
 
 import {BaseSetup} from "@chimera/BaseSetup.sol";
 import {Asserts} from "@chimera/Asserts.sol";
+import { vm } from "@chimera/Hevm.sol";
 
 import {IAdapter} from "src/common/interfaces/IAdapter.sol";
-import "src/common/Gateway.sol";
+import {IRoot} from "src/common/interfaces/IRoot.sol";
+import {IGasService} from "src/common/interfaces/IGasService.sol";
 
+import {Gateway} from "src/common/Gateway.sol";
 import {MockAdapter} from "test/common/mocks/MockAdapter.sol";
 
 // What happens if we add more adapters later?
@@ -23,6 +26,8 @@ import {MockAdapter} from "test/common/mocks/MockAdapter.sol";
  * 1) Understand better
  *   2) Increase coverage
  */
+
+// TODO: This needs to be reworked for the new Gateway
 abstract contract Setup is BaseSetup, Asserts {
     /// TODO: Consider shared storage
     Gateway routerAggregator;
@@ -68,5 +73,21 @@ abstract contract Setup is BaseSetup, Asserts {
         }
 
         routerAggregator.file("adapters", CENTRIFUGE_ID, adapters);
+    }
+
+    function setupFork() internal {
+        // These will be dynamically replaced by Gov Fuzzing
+        // vm.roll(20770509);
+        // vm.warp(1726578263);    
+
+        // // TODO: Replace with forked contracts
+        // // 1. Gateway
+        // routerAggregator = Gateway(payable(address(0x10000)));
+
+        // // 2. MockAdapters
+        // address adapter1 = address(0x20000);
+        // address adapter2 = address(0x30000);
+        // adapters.push(adapter1);
+        // adapters.push(adapter2);
     }
 }

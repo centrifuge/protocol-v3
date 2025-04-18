@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: BUSL-1.1
-pragma solidity 0.8.28;
+// SPDX-License-Identifier: AGPL-3.0-only
+pragma solidity ^0.8.0;
 
 import {ERC20} from "src/misc/ERC20.sol";
 
@@ -29,7 +29,6 @@ abstract contract SharedStorage {
     bool RECON_USE_SINGLE_DEPLOY = true; // NOTE: Actor Properties break if you use multi cause they are
         // mono-dimensional
 
-    // Should we also enforce the exact balance check on assetErc20 / shares?
     // TODO: This is broken rn
     // Liquidity Pool functions
     bool RECON_EXACT_BAL_CHECK = false;
@@ -49,8 +48,6 @@ abstract contract SharedStorage {
     // NOTE: TODO
     // ** INCOMPLETE - Deployment, Setup and Cycling of Assets, Shares, Pools and Vaults **/
     // Step 1
-    // Make Currency
-    ERC20[] allTokens;
     /// TODO: Consider dropping
     mapping(address => uint128) assetAddressToAssetId;
     mapping(uint128 => address) assetIdToAssetAddress;
