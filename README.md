@@ -75,7 +75,8 @@ forge test
 | [Spearbit](https://spearbit.com/)                    | July 2024       | Security review            | [`Report`](https://github.com/centrifuge/protocol-v3/blob/main/docs/audits/2024-08-Spearbit.pdf)                                                                            |
 | [Recon](https://getrecon.xyz/) | Jan 2025  | Invariant test development | [`Report`](https://getrecon.substack.com/p/never-stop-improving-your-invariant) |
 | [Cantina](https://cantina.xyz/)                      | Feb 2025        | Security review            | [`Report`](https://github.com/centrifuge/protocol-v3/blob/main/docs/audits/2025-02-Cantina.pdf)                                                                             |
-| [burraSec](https://www.burrasec.com/)                      | Apr 2025        | Security review            | [`Report`](https://github.com/centrifuge/protocol-v3/blob/main/docs/audits/2025-04-burraSec.pdf)                                                                             |
+| [burraSec](https://www.burrasec.com/)                      | Apr 2025        | Security review            | [`Report`](https://github.com/centrifuge/protocol-v3/blob/main/docs/audits/2025-04-burraSec-1.pdf)                                                                             |
+| [burraSec](https://www.burrasec.com/)                      | Apr 2025        | Security review            | [`Report`](https://github.com/centrifuge/protocol-v3/blob/main/docs/audits/2025-04-burraSec-2.pdf)                                                                             |
 
 ## License
 This codebase is licensed under [Business Source License 1.1](https://github.com/centrifuge/protocol-v3/blob/main/LICENSE).
