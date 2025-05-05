@@ -31,6 +31,7 @@ import {BaseInvestmentManager} from "src/vaults/BaseInvestmentManager.sol";
 import {IPoolEscrowProvider} from "src/vaults/interfaces/factories/IPoolEscrowFactory.sol";
 import {IEscrow} from "src/vaults/interfaces/IEscrow.sol";
 import {ESCROW_HOOK_ID} from "src/common/interfaces/IHook.sol";
+import {console2} from "forge-std/console2.sol";
 
 /// @title  Investment Manager
 /// @notice This is the main contract vaults interact with for
@@ -161,6 +162,7 @@ contract AsyncRequestManager is BaseInvestmentManager, IAsyncRequestManager {
     /// @inheritdoc IAsyncDepositManager
     function cancelDepositRequest(IBaseVault vault_, address controller, address) public auth {
         AsyncInvestmentState storage state = investments[vault_][controller];
+        console2.log("state.pendingDepositRequest", state.pendingDepositRequest);
         require(state.pendingDepositRequest > 0, NoPendingRequest());
         require(state.pendingCancelDepositRequest != true, CancellationIsPending());
         state.pendingCancelDepositRequest = true;

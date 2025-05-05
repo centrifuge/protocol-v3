@@ -37,7 +37,6 @@ contract TransientValuation is BaseValuation, ReentrancyProtection {
     function getQuote(uint256 baseAmount, address base, address quote) external view returns (uint256 quoteAmount) {
         bytes32 slot = keccak256(abi.encode(base, quote));
         D18 price = d18(uint128(slot.tloadUint256()));
-
         require(D18.unwrap(price) != 0, PriceNotSet(base, quote));
 
         return PricingLib.convertWithPrice(baseAmount, _getDecimals(base), _getDecimals(quote), price);

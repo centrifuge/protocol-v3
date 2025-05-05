@@ -1,0 +1,284 @@
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity 0.8.28;
+
+// Recon Deps
+import {BaseTargetFunctions} from "@chimera/BaseTargetFunctions.sol";
+import {vm} from "@chimera/Hevm.sol";
+import {MockERC20} from "@recon/MockERC20.sol";
+import {console2} from "forge-std/console2.sol";
+
+// Dependencies
+import {ERC20} from "src/misc/ERC20.sol";
+import {AsyncVault} from "src/vaults/AsyncVault.sol";
+import {ShareToken} from "src/vaults/token/ShareToken.sol";
+import {FullRestrictions} from "src/hooks/FullRestrictions.sol";
+import {ShareClassId} from "src/common/types/ShareClassId.sol";
+import {PoolId} from "src/common/types/PoolId.sol";
+import {AssetId} from "src/common/types/AssetId.sol";
+import {D18} from "src/misc/types/D18.sol";
+import {IERC7726} from "src/misc/interfaces/IERC7726.sol";
+
+// Component
+import {ShareTokenTargets} from "./targets/ShareTokenTargets.sol";
+import {RestrictedTransfersTargets} from "./targets/RestrictedTransfersTargets.sol";
+import {VaultTargets} from "./targets/VaultTargets.sol";
+import {PoolManagerTargets} from "./targets/PoolManagerTargets.sol";
+import {ManagerTargets} from "./targets/ManagerTargets.sol";
+import {Properties} from "./properties/Properties.sol";
+import {AdminTargets} from "./targets/AdminTargets.sol";
+import {HubTargets} from "./targets/HubTargets.sol";
+import {ToggleTargets} from "./targets/ToggleTargets.sol";
+
+abstract contract TargetFunctions is
+    BaseTargetFunctions,
+    Properties,
+    ShareTokenTargets,
+    RestrictedTransfersTargets,
+    VaultTargets,
+    PoolManagerTargets,
+    ManagerTargets,
+    HubTargets,
+    AdminTargets,
+    ToggleTargets 
+{
+    bool hasDoneADeploy;
+
+    /// === Canaries === ///
+    function canary_doesTokenGetDeployed() public view returns (bool) {
+        if (RECON_TOGGLE_CANARY_TESTS) {
+            return _getAssets().length < 10;
+        }
+
+        return true;
+    }
+
+    function canary_doesShareGetDeployed() public view returns (bool) {
+        if (RECON_TOGGLE_CANARY_TESTS) {
+            return shareClassTokens.length < 10;
+        }
+
+        return true;
+    }
+
+    function canary_doesVaultGetDeployed() public view returns (bool) {
+        if (RECON_TOGGLE_CANARY_TESTS) {
+            return vaults.length < 10;
+        }
+
+        return true;
+    }
+
+
+    /// === Shortcut Functions === ///
+    /// @dev This is the main system setup function done like this to explore more possible states
+    /// @dev Deploy new asset, add asset to pool, deploy share class, deploy vault
+    function shortcut_deployNewTokenPoolAndShare(uint8 decimals, uint256 salt, bool isIdentityValuation, bool isDebitNormal, bool isAsyncVault)
+        public
+        returns (address _token, address _shareToken, address _vault, uint128 _assetId, bytes16 _scId)
+    {
+        // NOTE: TEMPORARY
+        require(!hasDoneADeploy); // This bricks the function for this one for Medusa
+        // Meaning we only deploy one token, one Pool, one share class
+
+        if (RECON_USE_SINGLE_DEPLOY) {
+            hasDoneADeploy = true;
+        }
+
+        if (RECON_USE_HARDCODED_DECIMALS) {
+            decimals = 18;
+        }
+
+        // NOTE END TEMPORARY
+
+        /// @audit NOTE: This works because we only deploy once!!
+        decimals = decimals % RECON_MODULO_DECIMALS;
+
+        // 1. Deploy new token and register it as an asset
+        _token = _newAsset(decimals);
+        PoolId _poolId;
+
+        {
+            _assetId = poolManager_registerAsset(address(_token), 0);
+        }
+
+        // 2. Deploy new pool and register it
+        {
+            _poolId = PoolId.wrap(POOL_ID_COUNTER);
+            hub_createPool(_poolId.raw(), _getActor(), _assetId);
+
+            poolManager_addPool(_poolId.raw());
+
+            POOL_ID_COUNTER++;
+        }
+
+        // 3. Deploy new share class and register it
+        {
+            // have to get share class like this because addShareClass doesn't return it
+            ShareClassId scIdTemp = shareClassManager.previewNextShareClassId(_poolId);
+            _scId = scIdTemp.raw();
+
+            hub_addShareClass(_poolId.raw(), salt);
+
+            // TODO: Should we customize decimals and permissions here?
+            (_shareToken,) = poolManager_addShareClass(_poolId.raw(), _scId, 18, address(fullRestrictions));
+        }
+
+        // 4. Create accounts and holding
+        {
+            IERC7726 valuation = isIdentityValuation ? 
+                        IERC7726(address(identityValuation)) : 
+                        IERC7726(address(transientValuation));
+                        
+            hub_createAccount(_poolId.raw(), ASSET_ACCOUNT, isDebitNormal);
+            hub_createAccount(_poolId.raw(), EQUITY_ACCOUNT, isDebitNormal);
+            hub_createAccount(_poolId.raw(), LOSS_ACCOUNT, isDebitNormal);
+            hub_createAccount(_poolId.raw(), GAIN_ACCOUNT, isDebitNormal);
+            
+            hub_createHolding(_poolId.raw(), _scId, valuation, ASSET_ACCOUNT, EQUITY_ACCOUNT, LOSS_ACCOUNT, GAIN_ACCOUNT);
+        }
+
+        // 5. Deploy new vault and register it
+        _vault = poolManager_deployVault(_poolId.raw(), _scId, _assetId, isAsyncVault);
+        poolManager_linkVault(_poolId.raw(), _scId, _assetId, _vault);
+        asyncRequestManager.rely(address(_vault));
+
+        // 6. approve and mint initial amount of underlying asset to all actors
+        address[] memory approvals = new address[](3);
+        approvals[0] = address(poolManager);
+        approvals[1] = address(_vault);
+        _finalizeAssetDeployment(_getActors(), approvals, type(uint88).max);
+
+        vault = AsyncVault(_vault);
+        token = ShareToken(_shareToken);
+        token.file("hook", address(fullRestrictions));
+
+        // NOTE: Add to storage so these can be clamped in other functions
+        scId = _scId;
+        poolId = _poolId.raw();
+        assetId = _assetId;
+    }
+
+    function shortcut_request_deposit(uint64 pricePoolPerShare, uint128 priceValuation, uint256 amount, uint256 toEntropy) public {
+        transientValuation_setPrice_clamped(poolId, assetId, priceValuation);
+        
+        hub_updatePricePerShare(poolId, scId, pricePoolPerShare);
+        hub_notifySharePrice_clamped(0,0);
+        hub_notifyAssetPrice_clamped(0,0);
+        poolManager_updateMember(type(uint64).max);
+        
+        vault_requestDeposit(amount, toEntropy);
+    }
+
+    function shortcut_deposit_and_claim(uint64 pricePoolPerShare, uint128 priceValuation, uint256 amount, uint128 navPerShare, uint256 toEntropy) public {
+        shortcut_request_deposit(pricePoolPerShare, priceValuation, amount, toEntropy);
+
+        uint32 depositEpoch = shareClassManager.nowDepositEpoch(ShareClassId.wrap(scId), AssetId.wrap(assetId));
+        shortcut_approve_and_issue_shares(poolId, scId, uint128(amount), depositEpoch, navPerShare);
+       
+        hub_notifyDeposit(poolId, scId, assetId, MAX_CLAIMS);
+
+        vault_deposit(amount);
+    }
+
+    function shortcut_deposit_and_cancel(uint64 pricePoolPerShare, uint128 priceValuation, uint256 amount, uint128 navPerShare, uint256 toEntropy) public {
+        shortcut_request_deposit(pricePoolPerShare, priceValuation, amount, toEntropy);
+
+        vault_cancelDepositRequest();
+    }
+
+    function shortcut_queue_redemption(uint256 shares, uint128 navPerShare, uint256 toEntropy) public {
+        vault_requestRedeem(shares, toEntropy);
+
+        uint32 redeemEpoch = shareClassManager.nowRedeemEpoch(ShareClassId.wrap(scId), AssetId.wrap(assetId));
+        shortcut_approve_and_revoke_shares(poolId, scId, uint128(shares), redeemEpoch, navPerShare);
+    }
+
+    function shortcut_claim_withdrawal(uint256 assets, uint256 toEntropy) public {
+        hub_notifyRedeem(poolId, ShareClassId.wrap(scId).raw(), assetId, MAX_CLAIMS);
+
+        vault_withdraw(assets, toEntropy);
+    }
+
+    function shortcut_claim_redemption(uint256 shares, uint256 toEntropy) public {
+        hub_notifyRedeem(poolId, ShareClassId.wrap(scId).raw(), assetId, MAX_CLAIMS);
+
+        vault_redeem(shares, toEntropy);
+    }
+
+    function shortcut_redeem_and_claim(uint256 shares, uint128 navPerShare, uint256 toEntropy) public {
+        shortcut_queue_redemption(shares, navPerShare, toEntropy);
+        shortcut_claim_withdrawal(shares, toEntropy);
+    }
+
+    function shortcut_withdraw_and_claim_clamped(uint256 shares, uint128 navPerShare, uint256 toEntropy) public {
+        // clamp with share balance here because the maxRedeem is only updated after notifyRedeem
+        shares %= (MockERC20(address(vault.share())).balanceOf(_getActor()) + 1);
+        uint256 sharesAsAssets = vault.convertToAssets(shares);
+        shortcut_queue_redemption(shares, navPerShare, toEntropy);
+        shortcut_claim_withdrawal(sharesAsAssets, toEntropy);
+    }
+
+    function shortcut_redeem_and_claim_clamped(uint256 shares, uint128 navPerShare, uint256 toEntropy) public {
+        // clamp with share balance here because the maxRedeem is only updated after notifyRedeem
+        shares %= (MockERC20(address(vault.share())).balanceOf(_getActor()) + 1);
+        shortcut_queue_redemption(shares, navPerShare, toEntropy);
+        shortcut_claim_redemption(shares, toEntropy);
+    }
+
+    function shortcut_cancel_redeem_clamped(uint256 shares, uint128 navPerShare, uint256 toEntropy) public {
+        // clamp with share balance here because the maxRedeem is only updated after notifyRedeem
+        shares %= (MockERC20(address(vault.share())).balanceOf(_getActor()) + 1);
+        shortcut_queue_redemption(shares, navPerShare, toEntropy);
+
+        vault_cancelRedeemRequest();
+    }
+
+
+    /// === POOL ADMIN SHORTCUTS === ///
+    function shortcut_approve_and_issue_shares(
+        uint64 poolId,
+        bytes16 scId,
+        uint128 maxApproval, 
+        uint32 nowDepositEpochId,
+        uint128 navPerShare
+    ) public  {
+        AssetId assetId = hubRegistry.currency(PoolId.wrap(poolId));
+        hub_approveDeposits(poolId, scId, assetId.raw(), nowDepositEpochId, maxApproval);
+        hub_issueShares(poolId, scId, assetId.raw(), nowDepositEpochId, navPerShare);
+    }
+
+    function shortcut_approve_and_revoke_shares(
+        uint64 poolId,
+        bytes16 scId,
+        uint128 maxApproval,
+        uint32 epochId,
+        uint128 navPerShare
+    ) public  {        
+        AssetId assetId = hubRegistry.currency(PoolId.wrap(poolId));
+        hub_approveRedeems(poolId, scId, assetId.raw(), epochId, maxApproval);
+        hub_revokeShares(poolId, scId, epochId, navPerShare);
+    }
+
+    /// === Transient Valuation === ///
+    function transientValuation_setPrice(address base, address quote, uint128 price) public {
+        transientValuation.setPrice(base, quote, D18.wrap(price));
+    }
+
+    // set the price of the asset in the transient valuation for a given pool
+    function transientValuation_setPrice_clamped(uint64 poolId, uint128 assetIdAsUint, uint128 price) public {
+        AssetId poolCurrency = hubRegistry.currency(PoolId.wrap(poolId));
+        AssetId assetId = AssetId.wrap(assetIdAsUint);
+
+        transientValuation.setPrice(address(assetId.addr()), address(poolCurrency.addr()), D18.wrap(price));
+    }
+
+    /// === Permission Functions === ///
+    // TODO: can probably remove these
+    function root_scheduleRely(address target) public asAdmin {
+        root.scheduleRely(target);
+    }
+
+    function root_cancelRely(address target) public asAdmin {
+        root.cancelRely(target);
+    }
+}
