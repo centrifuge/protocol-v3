@@ -14,7 +14,7 @@ import {TransientStorageLib} from "src/misc/libraries/TransientStorageLib.sol";
 import {IRoot} from "src/common/interfaces/IRoot.sol";
 import {IGateway} from "src/common/interfaces/IGateway.sol";
 import {MessageLib, UpdateContractType} from "src/common/libraries/MessageLib.sol";
-import {IVaultMessageSender} from "../common/interfaces/IGatewaySenders.sol";
+import {IVaultMessageSender} from "src/common/interfaces/IGatewaySenders.sol";
 import {IBalanceSheetGatewayHandler} from "src/common/interfaces/IGatewayHandlers.sol";
 import {PoolId} from "src/common/types/PoolId.sol";
 import {ShareClassId} from "src/common/types/ShareClassId.sol";
@@ -64,6 +64,7 @@ contract BalanceSheet is Auth, Recoverable, IBalanceSheet, IBalanceSheetGatewayH
     // Administration
     //----------------------------------------------------------------------------------------------
 
+    /// @inheritdoc IBalanceSheet
     function file(bytes32 what, address data) external auth {
         if (what == "poolManager") poolManager = IPoolManager(data);
         else if (what == "sender") sender = IVaultMessageSender(data);
@@ -72,6 +73,7 @@ contract BalanceSheet is Auth, Recoverable, IBalanceSheet, IBalanceSheetGatewayH
         emit File(what, data);
     }
 
+    /// @inheritdoc IUpdateContract
     function update(PoolId poolId, ShareClassId, /* scId */ bytes calldata payload) external auth {
         uint8 kind = uint8(MessageLib.updateContractType(payload));
 
@@ -91,13 +93,13 @@ contract BalanceSheet is Auth, Recoverable, IBalanceSheet, IBalanceSheetGatewayH
     //----------------------------------------------------------------------------------------------
 
     /// @inheritdoc IBalanceSheet
-    function deposit(PoolId poolId, ShareClassId scId, address asset, uint256 tokenId, address owner, uint128 amount)
+    function deposit(PoolId poolId, ShareClassId scId, address asset, uint256 tokenId, uint128 amount)
         external
         authOrManager(poolId)
     {
         AssetId assetId = poolManager.assetToId(asset, tokenId);
-        _noteDeposit(poolId, scId, assetId, asset, tokenId, owner, amount);
-        _executeDeposit(poolId, asset, tokenId, owner, amount);
+        _noteDeposit(poolId, scId, assetId, asset, tokenId, msg.sender, amount);
+        _executeDeposit(poolId, asset, tokenId, msg.sender, amount);
     }
 
     /// @inheritdoc IBalanceSheet
@@ -170,6 +172,20 @@ contract BalanceSheet is Auth, Recoverable, IBalanceSheet, IBalanceSheetGatewayH
     function overridePricePoolPerShare(PoolId poolId, ShareClassId scId, D18 value) external authOrManager(poolId) {
         TransientStorageLib.tstore(keccak256(abi.encode("pricePoolPerShare", poolId, scId)), value.raw());
         TransientStorageLib.tstore(keccak256(abi.encode("pricePoolPerShareIsSet", poolId, scId)), true);
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // View methods
+    //----------------------------------------------------------------------------------------------
+
+    /// @inheritdoc IBalanceSheet
+    function availableBalanceOf(PoolId poolId, ShareClassId scId, address asset, uint256 tokenId)
+        public
+        view
+        returns (uint128)
+    {
+        IPoolEscrow escrow = poolEscrowProvider.escrow(poolId);
+        return escrow.availableBalanceOf(scId, asset, tokenId);
     }
 
     //----------------------------------------------------------------------------------------------
