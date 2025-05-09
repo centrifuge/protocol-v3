@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {MessageType, MessageLib} from "src/common/libraries/MessageLib.sol";
+import {MessageType, MessageLib, MessageDirection} from "src/common/libraries/MessageLib.sol";
 import {AccountId} from "src/common/types/AccountId.sol";
 import {MessageProofLib} from "src/common/libraries/MessageProofLib.sol";
 
@@ -29,6 +29,7 @@ contract TestMessageLibIdentities is Test {
         assertEq(a.centrifugeId, b.centrifugeId);
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.AnyToAny);
     }
 
     function testDisputeRecovery(bytes32 hash_, bytes32 adapter, uint16 centrifugeId) public pure {
@@ -41,6 +42,7 @@ contract TestMessageLibIdentities is Test {
         assertEq(a.centrifugeId, b.centrifugeId);
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.AnyToAny);
     }
 
     function testScheduleUpgrade(bytes32 target) public pure {
@@ -50,6 +52,7 @@ contract TestMessageLibIdentities is Test {
         assertEq(a.target, b.target);
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.AnyToAny);
     }
 
     function testCancelUpgrade(bytes32 target) public pure {
@@ -59,6 +62,7 @@ contract TestMessageLibIdentities is Test {
         assertEq(a.target, b.target);
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.AnyToAny);
     }
 
     function testRecoverTokens(bytes32 target, bytes32 token, uint256 tokenId, bytes32 to, uint256 amount)
@@ -76,6 +80,7 @@ contract TestMessageLibIdentities is Test {
         assertEq(a.amount, b.amount);
 
         assertEq(a.serialize().messageLength(), a.serialize().length, "XXX");
+        assertTrue(a.serialize().messageDirection() == MessageDirection.AnyToAny);
     }
 
     function testRegisterAsset(uint128 assetId, uint8 decimals) public pure {
@@ -86,6 +91,7 @@ contract TestMessageLibIdentities is Test {
         assertEq(a.decimals, b.decimals);
 
         assertEq(bytes(a.serialize()).length, a.serialize().messageLength());
+        assertTrue(a.serialize().messageDirection() == MessageDirection.VaultsToHub);
     }
 
     function testNotifyPool(uint64 poolId) public pure {
@@ -96,6 +102,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testNotifyShareClass(
@@ -130,6 +137,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testNotifyPricePoolPerShare(uint64 poolId, bytes16 scId, uint128 price, uint64 timestamp) public pure {
@@ -143,6 +151,7 @@ contract TestMessageLibIdentities is Test {
         assertEq(a.timestamp, b.timestamp);
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testNotifyPricePoolPerAsset(uint64 poolId, bytes16 scId, uint128 assetId, uint128 price, uint64 timestamp)
@@ -166,6 +175,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testNotifyShareMetadata(uint64 poolId, bytes16 scId, string calldata name, bytes32 symbol) public pure {
@@ -182,6 +192,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testUpdateShareHook(uint64 poolId, bytes16 scId, bytes32 hook) public pure {
@@ -194,12 +205,40 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
-    function testTransferShares(uint64 poolId, bytes16 scId, bytes32 receiver, uint128 amount) public pure {
-        MessageLib.TransferShares memory a =
-            MessageLib.TransferShares({poolId: poolId, scId: scId, receiver: receiver, amount: amount});
-        MessageLib.TransferShares memory b = MessageLib.deserializeTransferShares(a.serialize());
+    function testInitiateTransferShares(
+        uint64 poolId,
+        bytes16 scId,
+        uint16 centrifugeId,
+        bytes32 receiver,
+        uint128 amount
+    ) public pure {
+        MessageLib.InitiateTransferShares memory a = MessageLib.InitiateTransferShares({
+            poolId: poolId,
+            scId: scId,
+            centrifugeId: centrifugeId,
+            receiver: receiver,
+            amount: amount
+        });
+        MessageLib.InitiateTransferShares memory b = MessageLib.deserializeInitiateTransferShares(a.serialize());
+
+        assertEq(a.poolId, b.poolId);
+        assertEq(a.scId, b.scId);
+        assertEq(a.centrifugeId, b.centrifugeId);
+        assertEq(a.receiver, b.receiver);
+        assertEq(a.amount, b.amount);
+
+        assertEq(a.serialize().messageLength(), a.serialize().length);
+        assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.VaultsToHub);
+    }
+
+    function testExecuteTransferShares(uint64 poolId, bytes16 scId, bytes32 receiver, uint128 amount) public pure {
+        MessageLib.ExecuteTransferShares memory a =
+            MessageLib.ExecuteTransferShares({poolId: poolId, scId: scId, receiver: receiver, amount: amount});
+        MessageLib.ExecuteTransferShares memory b = MessageLib.deserializeExecuteTransferShares(a.serialize());
 
         assertEq(a.poolId, b.poolId);
         assertEq(a.scId, b.scId);
@@ -208,6 +247,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testUpdateRestriction(uint64 poolId, bytes16 scId, bytes memory payload) public pure {
@@ -221,6 +261,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
 
         // Check the payload length is correctly encoded as little endian
         assertEq(a.payload.length, uint8(a.serialize()[a.serialize().messageLength() - a.payload.length - 1]));
@@ -267,6 +308,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
 
         // Check the payload length is correctly encoded as little endian
         assertEq(a.payload.length, uint8(a.serialize()[a.serialize().messageLength() - a.payload.length - 1]));
@@ -356,6 +398,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.VaultsToHub);
     }
 
     function testRedeemRequest(uint64 poolId, bytes16 scId, bytes32 investor, uint128 assetId, uint128 amount)
@@ -374,6 +417,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.VaultsToHub);
     }
 
     function testFulfilledDepositRequest(
@@ -403,6 +447,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testFulfilledRedeemRequest(
@@ -432,6 +477,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testCancelDepositRequest(uint64 poolId, bytes16 scId, bytes32 investor, uint128 assetId) public pure {
@@ -446,6 +492,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.VaultsToHub);
     }
 
     function testCancelRedeemRequest(uint64 poolId, bytes16 scId, bytes32 investor, uint128 assetId) public pure {
@@ -460,6 +507,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.VaultsToHub);
     }
 
     function testFulfilledCancelDepositRequest(
@@ -487,6 +535,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testFulfilledCancelRedeemRequest(
@@ -514,6 +563,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testUpdateHoldingAmount(
@@ -550,6 +600,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.VaultsToHub);
     }
 
     function testUpdateShares(uint64 poolId, bytes16 scId, uint128 shares, uint64 timestamp, bool isIssuance)
@@ -574,6 +625,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.VaultsToHub);
     }
 
     function testApprovedDeposits(
@@ -601,6 +653,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testRevokedShares(
@@ -631,6 +684,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testTriggerIssueShares(uint64 poolId, bytes16 scId, bytes32 who, uint128 shares) public pure {
@@ -646,6 +700,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testTriggerSubmitQueuedShares(uint64 poolId, bytes16 scId) public pure {
@@ -658,6 +713,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testTriggerSubmitQueuedAssets(uint64 poolId, bytes16 scId, uint128 assetId) public pure {
@@ -671,6 +727,7 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 
     function testSetQueue(uint64 poolId, bytes16 scId, bool enabled) public pure {
@@ -683,5 +740,6 @@ contract TestMessageLibIdentities is Test {
 
         assertEq(a.serialize().messageLength(), a.serialize().length);
         assertEq(a.serialize().messagePoolId().raw(), a.poolId);
+        assertTrue(a.serialize().messageDirection() == MessageDirection.HubToVaults);
     }
 }
