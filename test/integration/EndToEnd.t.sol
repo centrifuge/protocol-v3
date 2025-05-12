@@ -21,9 +21,11 @@ import {Gateway} from "src/common/Gateway.sol";
 import {MessageLib, VaultUpdateKind} from "src/common/libraries/MessageLib.sol";
 
 import {Hub} from "src/hub/Hub.sol";
+import {AccountType} from "src/hub/interfaces/IHub.sol";
 import {HubRegistry} from "src/hub/HubRegistry.sol";
 import {Accounting} from "src/hub/Accounting.sol";
 import {Holdings} from "src/hub/Holdings.sol";
+import {IHoldings, HoldingAccount} from "src/hub/interfaces/IHoldings.sol";
 import {ShareClassManager} from "src/hub/ShareClassManager.sol";
 import {IShareClassManager} from "src/hub/interfaces/IShareClassManager.sol";
 
@@ -218,9 +220,15 @@ contract TestEndToEnd is Test {
         h.hub.createAccount(poolId, EQUITY_ACCOUNT, false);
         h.hub.createAccount(poolId, LOSS_ACCOUNT, false);
         h.hub.createAccount(poolId, GAIN_ACCOUNT, false);
-        h.hub.initializeHolding(
-            poolId, scId, assetId, h.identityValuation, ASSET_ACCOUNT, EQUITY_ACCOUNT, GAIN_ACCOUNT, LOSS_ACCOUNT
-        );
+
+        {
+            HoldingAccount[] memory accounts = new HoldingAccount[](4);
+            accounts[0] = HoldingAccount(ASSET_ACCOUNT, uint8(AccountType.Asset));
+            accounts[1] = HoldingAccount(EQUITY_ACCOUNT, uint8(AccountType.Equity));
+            accounts[2] = HoldingAccount(GAIN_ACCOUNT, uint8(AccountType.Gain));
+            accounts[3] = HoldingAccount(LOSS_ACCOUNT, uint8(AccountType.Loss));
+            h.hub.initializeHolding(poolId, scId, assetId, h.identityValuation, accounts);
+        }
 
         h.hub.updatePricePerShare(poolId, scId, IDENTITY_PRICE);
         h.hub.notifySharePrice{value: GAS}(poolId, scId, cv.centrifugeId);

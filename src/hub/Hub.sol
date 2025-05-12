@@ -413,38 +413,32 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
         ShareClassId scId,
         AssetId assetId,
         IERC7726 valuation,
-        AccountId assetAccount,
-        AccountId equityAccount,
-        AccountId gainAccount,
-        AccountId lossAccount
+        HoldingAccount[] memory accounts
     ) external payable {
         _isManager(poolId);
 
         require(hubRegistry.isRegistered(assetId), IHubRegistry.AssetNotFound());
-        require(
-            accounting.exists(poolId, assetAccount) && accounting.exists(poolId, equityAccount)
-                && accounting.exists(poolId, lossAccount) && accounting.exists(poolId, gainAccount),
-            IAccounting.AccountDoesNotExist()
-        );
 
-        accounting.unlock(poolId);
+        for (uint256 i; i < accounts.length; i++) {
+            require(accounting.exists(poolId, accounts[i].accountId), IAccounting.AccountDoesNotExist());
+        }
 
-        HoldingAccount[] memory accounts = new HoldingAccount[](4);
-        accounts[0] = HoldingAccount(assetAccount, uint8(AccountType.Asset));
-        accounts[1] = HoldingAccount(equityAccount, uint8(AccountType.Equity));
-        accounts[2] = HoldingAccount(gainAccount, uint8(AccountType.Gain));
-        accounts[3] = HoldingAccount(lossAccount, uint8(AccountType.Loss));
+        // HoldingAccount[] memory accounts = new HoldingAccount[](4);
+        // accounts[0] = HoldingAccount(assetAccount, uint8(AccountType.Asset));
+        // accounts[1] = HoldingAccount(equityAccount, uint8(AccountType.Equity));
+        // accounts[2] = HoldingAccount(gainAccount, uint8(AccountType.Gain));
+        // accounts[3] = HoldingAccount(lossAccount, uint8(AccountType.Loss));
 
         holdings.initialize(poolId, scId, assetId, valuation, false, accounts);
 
-        uint128 holdingValue = holdings.value(poolId, scId, assetId);
-        if (holdingValue > 0) {
+        uint128 value = holdings.value(poolId, scId, assetId);
+        if (value > 0) {
             // If increase/decrease was called before initialize, we add journal entries for this
-            accounting.addDebit(assetAccount, holdingValue);
-            accounting.addCredit(equityAccount, holdingValue);
+            accounting.unlock(poolId);
+            accounting.addDebit(holdings.accountId(poolId, scId, assetId, uint8(AccountType.Asset)), value);
+            accounting.addCredit(holdings.accountId(poolId, scId, assetId, uint8(AccountType.Equity)), value);
+            accounting.lock();
         }
-
-        accounting.lock();
     }
 
     /// @inheritdoc IHub

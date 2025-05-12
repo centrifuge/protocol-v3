@@ -15,7 +15,7 @@ import {AssetId} from "src/common/types/AssetId.sol";
 import {AccountId} from "src/common/types/AccountId.sol";
 import {ShareClassId} from "src/common/types/ShareClassId.sol";
 import {IHubRegistry} from "src/hub/interfaces/IHubRegistry.sol";
-import {IHoldings} from "src/hub/interfaces/IHoldings.sol";
+import {IHoldings, HoldingAccount} from "src/hub/interfaces/IHoldings.sol";
 import {IAccounting, JournalEntry} from "src/hub/interfaces/IAccounting.sol";
 import {IShareClassManager} from "src/hub/interfaces/IShareClassManager.sol";
 import {IHub} from "src/hub/interfaces/IHub.sol";
@@ -139,14 +139,7 @@ contract TestMainMethodsChecks is TestCommon {
 
         vm.expectRevert(IHub.NotManager.selector);
         hub.initializeHolding(
-            POOL_A,
-            ShareClassId.wrap(0),
-            AssetId.wrap(0),
-            IERC7726(address(0)),
-            AccountId.wrap(0),
-            AccountId.wrap(0),
-            AccountId.wrap(0),
-            AccountId.wrap(0)
+            POOL_A, ShareClassId.wrap(0), AssetId.wrap(0), IERC7726(address(0)), new HoldingAccount[](0)
         );
 
         vm.expectRevert(IHub.NotManager.selector);
@@ -206,16 +199,7 @@ contract TestInitializeHolding is TestCommon {
 
         vm.prank(ADMIN);
         vm.expectRevert(IHubRegistry.AssetNotFound.selector);
-        hub.initializeHolding(
-            POOL_A,
-            SC_A,
-            ASSET_A,
-            IERC7726(address(1)),
-            AccountId.wrap(1),
-            AccountId.wrap(1),
-            AccountId.wrap(1),
-            AccountId.wrap(1)
-        );
+        hub.initializeHolding(POOL_A, SC_A, ASSET_A, IERC7726(address(1)), new HoldingAccount[](0));
     }
 }
 

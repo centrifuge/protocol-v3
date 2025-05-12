@@ -17,6 +17,9 @@ import {IShareToken} from "src/vaults/interfaces/token/IShareToken.sol";
 import {SyncDepositVault} from "src/vaults/SyncDepositVault.sol";
 import {IAsyncVault} from "src/vaults/interfaces/IBaseVaults.sol";
 
+import {HoldingAccount} from "src/hub/interfaces/IHoldings.sol";
+import {AccountType} from "src/hub/interfaces/IHub.sol";
+
 import {FullDeployer} from "script/FullDeployer.s.sol";
 
 // Script to deploy Hub and Vaults with a Localhost Adapter.
@@ -72,16 +75,13 @@ contract LocalhostDeployer is FullDeployer {
         hub.createAccount(poolId, AccountId.wrap(0x02), false);
         hub.createAccount(poolId, AccountId.wrap(0x03), false);
         hub.createAccount(poolId, AccountId.wrap(0x04), false);
-        hub.initializeHolding(
-            poolId,
-            scId,
-            assetId,
-            identityValuation,
-            AccountId.wrap(0x01),
-            AccountId.wrap(0x02),
-            AccountId.wrap(0x03),
-            AccountId.wrap(0x04)
-        );
+
+        HoldingAccount[] memory accounts = new HoldingAccount[](4);
+        accounts[0] = HoldingAccount(AccountId.wrap(0x01), uint8(AccountType.Asset));
+        accounts[1] = HoldingAccount(AccountId.wrap(0x02), uint8(AccountType.Equity));
+        accounts[2] = HoldingAccount(AccountId.wrap(0x03), uint8(AccountType.Gain));
+        accounts[3] = HoldingAccount(AccountId.wrap(0x04), uint8(AccountType.Loss));
+        hub.initializeHolding(poolId, scId, assetId, identityValuation, accounts);
 
         hub.updateContract(
             poolId,
@@ -166,16 +166,13 @@ contract LocalhostDeployer is FullDeployer {
         hub.createAccount(poolId, AccountId.wrap(0x02), false);
         hub.createAccount(poolId, AccountId.wrap(0x03), false);
         hub.createAccount(poolId, AccountId.wrap(0x04), false);
-        hub.initializeHolding(
-            poolId,
-            scId,
-            assetId,
-            identityValuation,
-            AccountId.wrap(0x01),
-            AccountId.wrap(0x02),
-            AccountId.wrap(0x03),
-            AccountId.wrap(0x04)
-        );
+
+        HoldingAccount[] memory accounts = new HoldingAccount[](4);
+        accounts[0] = HoldingAccount(AccountId.wrap(0x01), uint8(AccountType.Asset));
+        accounts[1] = HoldingAccount(AccountId.wrap(0x02), uint8(AccountType.Equity));
+        accounts[2] = HoldingAccount(AccountId.wrap(0x03), uint8(AccountType.Gain));
+        accounts[3] = HoldingAccount(AccountId.wrap(0x04), uint8(AccountType.Loss));
+        hub.initializeHolding(poolId, scId, assetId, identityValuation, accounts);
 
         hub.updateContract(
             poolId,

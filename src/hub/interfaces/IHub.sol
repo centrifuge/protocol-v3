@@ -15,7 +15,7 @@ import {PoolId} from "src/common/types/PoolId.sol";
 import {IShareClassManager} from "src/hub/interfaces/IShareClassManager.sol";
 import {IAccounting, JournalEntry} from "src/hub/interfaces/IAccounting.sol";
 import {IHubRegistry} from "src/hub/interfaces/IHubRegistry.sol";
-import {IHoldings} from "src/hub/interfaces/IHoldings.sol";
+import {IHoldings, HoldingAccount} from "src/hub/interfaces/IHoldings.sol";
 
 /// @notice Account types used by Hub
 enum AccountType {
@@ -233,19 +233,13 @@ interface IHub {
     /// They can also be shared across assets.
     /// e.g.: All assets can use the same equity account.
     /// @param valuation Used to transform between payment assets and pool currency
-    /// @param assetAccount Used to track the asset value
-    /// @param equityAccount Used to track the equity value
-    /// @param gainAccount Used to track the gain value
-    /// @param lossAccount Used to track the loss value
+    /// @param accounts TODO
     function initializeHolding(
         PoolId poolId,
         ShareClassId scId,
         AssetId assetId,
         IERC7726 valuation,
-        AccountId assetAccount,
-        AccountId equityAccount,
-        AccountId gainAccount,
-        AccountId lossAccount
+        HoldingAccount[] memory accounts
     ) external payable;
 
     /// @notice Create a new liablity associated to the asset in a share class.

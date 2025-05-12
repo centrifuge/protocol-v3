@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.28;
 
+import {HoldingAccount} from "src/hub/interfaces/IHoldings.sol";
+import {AccountType} from "src/hub/interfaces/IHub.sol";
+
 import "test/hub/integration/BaseTest.sol";
 
 contract TestCases is BaseTest {
@@ -33,19 +36,16 @@ contract TestCases is BaseTest {
         hub.createAccount(poolId, GAIN_ACCOUNT, false);
         hub.createAccount(poolId, ASSET_EUR_STABLE_ACCOUNT, true);
         if (withInitialization) {
-            hub.initializeHolding(
-                poolId, scId, USDC_C2, identityValuation, ASSET_USDC_ACCOUNT, EQUITY_ACCOUNT, GAIN_ACCOUNT, LOSS_ACCOUNT
-            );
-            hub.initializeHolding(
-                poolId,
-                scId,
-                EUR_STABLE_C2,
-                valuation,
-                ASSET_EUR_STABLE_ACCOUNT,
-                EQUITY_ACCOUNT,
-                GAIN_ACCOUNT,
-                LOSS_ACCOUNT
-            );
+            HoldingAccount[] memory accounts = new HoldingAccount[](4);
+            accounts[0] = HoldingAccount(ASSET_USDC_ACCOUNT, uint8(AccountType.Asset));
+            accounts[1] = HoldingAccount(EQUITY_ACCOUNT, uint8(AccountType.Equity));
+            accounts[2] = HoldingAccount(GAIN_ACCOUNT, uint8(AccountType.Gain));
+            accounts[3] = HoldingAccount(LOSS_ACCOUNT, uint8(AccountType.Loss));
+
+            hub.initializeHolding(poolId, scId, USDC_C2, identityValuation, accounts);
+
+            accounts[0] = HoldingAccount(ASSET_EUR_STABLE_ACCOUNT, uint8(AccountType.Asset));
+            hub.initializeHolding(poolId, scId, EUR_STABLE_C2, valuation, accounts);
         }
         hub.updateContract{value: GAS}(
             poolId,
@@ -181,9 +181,12 @@ contract TestCases is BaseTest {
         _assertEqAccountValue(poolId, EQUITY_ACCOUNT, true, 0);
         _assertEqAccountValue(poolId, ASSET_USDC_ACCOUNT, true, 0);
 
-        hub.initializeHolding(
-            poolId, scId, USDC_C2, identityValuation, ASSET_USDC_ACCOUNT, EQUITY_ACCOUNT, GAIN_ACCOUNT, LOSS_ACCOUNT
-        );
+        HoldingAccount[] memory accounts = new HoldingAccount[](4);
+        accounts[0] = HoldingAccount(ASSET_USDC_ACCOUNT, uint8(AccountType.Asset));
+        accounts[1] = HoldingAccount(EQUITY_ACCOUNT, uint8(AccountType.Equity));
+        accounts[2] = HoldingAccount(GAIN_ACCOUNT, uint8(AccountType.Gain));
+        accounts[3] = HoldingAccount(LOSS_ACCOUNT, uint8(AccountType.Loss));
+        hub.initializeHolding(poolId, scId, USDC_C2, identityValuation, accounts);
 
         assertEq(holdings.amount(poolId, scId, USDC_C2), 1000 * assetDecimals);
         assertEq(holdings.value(poolId, scId, USDC_C2), 1000 * poolDecimals);
