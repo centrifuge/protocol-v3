@@ -6,6 +6,7 @@ import "src/misc/interfaces/IERC20.sol";
 import {IERC6909Fungible} from "src/misc/interfaces/IERC6909.sol";
 import {ERC20} from "src/misc/ERC20.sol";
 import {MockERC6909} from "test/misc/mocks/MockERC6909.sol";
+import {ERC20_TOKEN_ID} from "src/misc/interfaces/IRecoverable.sol";
 
 import {MessageType, MessageLib, VaultUpdateKind} from "src/common/libraries/MessageLib.sol";
 import {ISafe} from "src/common/interfaces/IGuardian.sol";
@@ -74,7 +75,7 @@ contract BaseTest is VaultsDeployer, Test {
     uint256 public constant DEFAULT_GAS = ESTIMATE_ADAPTERS + GAS_COST_LIMIT * 3;
     uint256 public constant DEFAULT_SUBSIDY = DEFAULT_GAS * 100;
 
-    uint256 public erc20TokenId = 0;
+    uint256 public erc20TokenId = ERC20_TOKEN_ID;
     uint256 public defaultErc6909TokenId = 16;
     uint128 public defaultAssetId = newAssetId(THIS_CHAIN_ID, 1).raw();
     uint128 public defaultPrice = 1 * 10 ** 18;

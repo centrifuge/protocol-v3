@@ -12,6 +12,7 @@ import {D18} from "src/misc/types/D18.sol";
 import {Recoverable} from "src/misc/Recoverable.sol";
 import {IERC165} from "src/misc/interfaces/IERC7575.sol";
 import {ReentrancyProtection} from "src/misc/ReentrancyProtection.sol";
+import {ERC20_TOKEN_ID} from "src/misc/interfaces/IRecoverable.sol";
 
 import {VaultUpdateKind, MessageLib, UpdateContractType} from "src/common/libraries/MessageLib.sol";
 import {IGateway} from "src/common/interfaces/IGateway.sol";
@@ -136,8 +137,13 @@ contract PoolManager is
     }
 
     // @inheritdoc IPoolManager
+    function registerAsset(uint16 centrifugeId, address asset) external payable protected returns (AssetId assetId) {
+        return registerAsset(centrifugeId, asset, ERC20_TOKEN_ID);
+    }
+
+    // @inheritdoc IPoolManager
     function registerAsset(uint16 centrifugeId, address asset, uint256 tokenId)
-        external
+        public
         payable
         protected
         returns (AssetId assetId)
@@ -152,7 +158,7 @@ contract PoolManager is
 
         gateway.payTransaction{value: msg.value}(msg.sender);
 
-        if (tokenId == 0) {
+        if (tokenId == ERC20_TOKEN_ID) {
             IERC20Metadata meta = IERC20Metadata(asset);
             name = meta.name();
             symbol = meta.symbol();
@@ -565,7 +571,7 @@ contract PoolManager is
     function _safeGetAssetDecimals(address asset, uint256 tokenId) private view returns (uint8) {
         bytes memory callData;
 
-        if (tokenId == 0) {
+        if (tokenId == ERC20_TOKEN_ID) {
             callData = abi.encodeWithSignature("decimals()");
         } else {
             callData = abi.encodeWithSignature("decimals(uint256)", tokenId);

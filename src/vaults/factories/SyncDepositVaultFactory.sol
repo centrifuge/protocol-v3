@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Auth} from "src/misc/Auth.sol";
+import {ERC20_TOKEN_ID} from "src/misc/interfaces/IRecoverable.sol";
 
 import {PoolId} from "src/common/types/PoolId.sol";
 import {ShareClassId} from "src/common/types/ShareClassId.sol";
@@ -41,7 +42,7 @@ contract SyncDepositVaultFactory is Auth, IVaultFactory {
         IShareToken token,
         address[] calldata wards_
     ) public auth returns (IBaseVault) {
-        require(tokenId == 0, UnsupportedTokenId());
+        require(tokenId == ERC20_TOKEN_ID, UnsupportedTokenId());
         SyncDepositVault vault =
             new SyncDepositVault(poolId, scId, asset, token, root, syncDepositManager, asyncRedeemManager);
 

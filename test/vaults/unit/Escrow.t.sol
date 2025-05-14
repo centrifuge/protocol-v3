@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {MockERC6909} from "test/misc/mocks/MockERC6909.sol";
+import {ERC20_TOKEN_ID} from "src/misc/interfaces/IRecoverable.sol";
 
 import {ERC20} from "src/misc/ERC20.sol";
 import {IAuth} from "src/misc/interfaces/IAuth.sol";
@@ -21,7 +22,7 @@ contract EscrowTestBase is Test {
     MockERC6909 erc6909 = new MockERC6909();
 
     function _mint(address escrow_, uint256 tokenId, uint256 amount) internal {
-        if (tokenId == 0) {
+        if (tokenId == ERC20_TOKEN_ID) {
             erc20.mint(escrow_, amount);
         } else {
             erc6909.mint(escrow_, tokenId, amount);
@@ -29,7 +30,7 @@ contract EscrowTestBase is Test {
     }
 
     function _asset(uint256 tokenId) internal view returns (address) {
-        return tokenId == 0 ? address(erc20) : address(erc6909);
+        return tokenId == ERC20_TOKEN_ID ? address(erc20) : address(erc6909);
     }
 }
 

@@ -68,11 +68,21 @@ interface IBalanceSheet {
 
     function file(bytes32 what, address data) external;
 
-    /// @notice Deposit assets into the escrow of the pool.
+    /// @notice Deposit ERC20 assets into the escrow of the pool.
+    function deposit(PoolId poolId, ShareClassId scId, address asset, uint128 amount) external;
+
+    /// @notice Deposit ERC6909 assets into the escrow of the pool.
     function deposit(PoolId poolId, ShareClassId scId, address asset, uint256 tokenId, uint128 amount) external;
 
-    /// @notice Note a deposit of assets into the escrow of the pool.
-    /// @dev    Must be followed by a transfer of the equivalent amount of assets to `IBalanceSheet.escrow(poolId)`
+    /// @notice Note a deposit of ERC20 assets into the escrow of the pool.
+    /// @dev    Must be followed by a transfer of the equivalent amount of ERC20 assets to
+    /// `IBalanceSheet.escrow(poolId)`
+    ///         This function is mostly useful to keep higher level integrations CEI adherent.
+    function noteDeposit(PoolId poolId, ShareClassId scId, address asset, address provider, uint128 amount) external;
+
+    /// @notice Note a deposit of ERC6909 assets into the escrow of the pool.
+    /// @dev    Must be followed by a transfer of the equivalent amount of ERC6909 assets to
+    /// `IBalanceSheet.escrow(poolId)`
     ///         This function is mostly useful to keep higher level integrations CEI adherent.
     function noteDeposit(
         PoolId poolId,
@@ -83,7 +93,10 @@ interface IBalanceSheet {
         uint128 amount
     ) external;
 
-    /// @notice Withdraw assets from the escrow of the pool.
+    /// @notice Withdraw ERC20 assets from the escrow of the pool.
+    function withdraw(PoolId poolId, ShareClassId scId, address asset, address receiver, uint128 amount) external;
+
+    /// @notice Withdraw ERC6909 assets from the escrow of the pool.
     function withdraw(
         PoolId poolId,
         ShareClassId scId,
@@ -114,7 +127,11 @@ interface IBalanceSheet {
     /// @dev    Assets for pending deposit requests are not held by the pool escrow.
     function escrow(PoolId poolId) external view returns (IPoolEscrow);
 
-    /// @notice Returns the amount of assets that can be withdrawn from the balance sheet.
+    /// @notice Returns the amount of ERC20 assets that can be withdrawn from the balance sheet.
+    /// @dev    Assets that are locked for redemption requests are reserved and not available for withdrawals.
+    function availableBalanceOf(PoolId poolId, ShareClassId scId, address asset) external view returns (uint128);
+
+    /// @notice Returns the amount of ERC6909 assets that can be withdrawn from the balance sheet.
     /// @dev    Assets that are locked for redemption requests are reserved and not available for withdrawals.
     function availableBalanceOf(PoolId poolId, ShareClassId scId, address asset, uint256 tokenId)
         external

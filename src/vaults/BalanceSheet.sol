@@ -10,6 +10,7 @@ import {IERC6909} from "src/misc/interfaces/IERC6909.sol";
 import {Recoverable} from "src/misc/Recoverable.sol";
 import {SafeTransferLib} from "src/misc/libraries/SafeTransferLib.sol";
 import {TransientStorageLib} from "src/misc/libraries/TransientStorageLib.sol";
+import {ERC20_TOKEN_ID} from "src/misc/interfaces/IRecoverable.sol";
 
 import {IRoot} from "src/common/interfaces/IRoot.sol";
 import {IGateway} from "src/common/interfaces/IGateway.sol";
@@ -95,18 +96,26 @@ contract BalanceSheet is Auth, Recoverable, IBalanceSheet, IBalanceSheetGatewayH
     //----------------------------------------------------------------------------------------------
 
     /// @inheritdoc IBalanceSheet
+    function deposit(PoolId poolId, ShareClassId scId, address asset, uint128 amount) external authOrManager(poolId) {
+        noteDeposit(poolId, scId, asset, ERC20_TOKEN_ID, msg.sender, amount);
+        SafeTransferLib.safeTransferFrom(asset, msg.sender, address(escrow(poolId)), amount);
+    }
+
+    /// @inheritdoc IBalanceSheet
     function deposit(PoolId poolId, ShareClassId scId, address asset, uint256 tokenId, uint128 amount)
         external
         authOrManager(poolId)
     {
         noteDeposit(poolId, scId, asset, tokenId, msg.sender, amount);
+        IERC6909(asset).transferFrom(msg.sender, address(escrow(poolId)), tokenId, amount);
+    }
 
-        address escrow_ = address(escrow(poolId));
-        if (tokenId == 0) {
-            SafeTransferLib.safeTransferFrom(asset, msg.sender, escrow_, amount);
-        } else {
-            IERC6909(asset).transferFrom(msg.sender, escrow_, tokenId, amount);
-        }
+    /// @inheritdoc IBalanceSheet
+    function noteDeposit(PoolId poolId, ShareClassId scId, address asset, address owner, uint128 amount)
+        public
+        authOrManager(poolId)
+    {
+        noteDeposit(poolId, scId, asset, ERC20_TOKEN_ID, owner, amount);
     }
 
     /// @inheritdoc IBalanceSheet
@@ -132,6 +141,14 @@ contract BalanceSheet is Auth, Recoverable, IBalanceSheet, IBalanceSheetGatewayH
     }
 
     /// @inheritdoc IBalanceSheet
+    function withdraw(PoolId poolId, ShareClassId scId, address asset, address receiver, uint128 amount)
+        external
+        authOrManager(poolId)
+    {
+        withdraw(poolId, scId, asset, ERC20_TOKEN_ID, receiver, amount);
+    }
+
+    /// @inheritdoc IBalanceSheet
     function withdraw(
         PoolId poolId,
         ShareClassId scId,
@@ -139,7 +156,7 @@ contract BalanceSheet is Auth, Recoverable, IBalanceSheet, IBalanceSheetGatewayH
         uint256 tokenId,
         address receiver,
         uint128 amount
-    ) external authOrManager(poolId) {
+    ) public authOrManager(poolId) {
         AssetId assetId = poolManager.assetToId(asset, tokenId);
         IPoolEscrow escrow_ = escrow(poolId);
         escrow_.withdraw(scId, asset, tokenId, amount);
@@ -217,6 +234,11 @@ contract BalanceSheet is Auth, Recoverable, IBalanceSheet, IBalanceSheetGatewayH
     /// @inheritdoc IBalanceSheet
     function escrow(PoolId poolId) public view returns (IPoolEscrow) {
         return poolEscrowProvider.escrow(poolId);
+    }
+
+    /// @inheritdoc IBalanceSheet
+    function availableBalanceOf(PoolId poolId, ShareClassId scId, address asset) public view returns (uint128) {
+        return escrow(poolId).availableBalanceOf(scId, asset, ERC20_TOKEN_ID);
     }
 
     /// @inheritdoc IBalanceSheet

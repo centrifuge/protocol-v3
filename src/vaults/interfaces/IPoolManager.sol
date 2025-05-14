@@ -195,13 +195,22 @@ interface IPoolManager {
         external
         payable;
 
-    /// @notice Registers an ERC-20 or ERC-6909 asset in another chain.
+    /// @notice Registers an ERC-20 asset in another chain.
     /// @dev `decimals()` MUST return a `uint8` value between 2 and 18.
     /// @dev `name()` and `symbol()` MAY return no values.
     ///
     /// @param centrifugeId The centrifuge id of chain to where the shares are transferred
     /// @param asset The address of the asset to be registered
-    /// @param tokenId The token id corresponding to the asset, i.e. zero if ERC20 or non-zero if ERC6909.
+    /// @return assetId The underlying internal uint128 assetId.
+    function registerAsset(uint16 centrifugeId, address asset) external payable returns (AssetId assetId);
+
+    /// @notice Registers an ERC-6909 asset in another chain.
+    /// @dev `decimals()` MUST return a `uint8` value between 2 and 18.
+    /// @dev `name()` and `symbol()` MAY return no values.
+    ///
+    /// @param centrifugeId The centrifuge id of chain to where the shares are transferred
+    /// @param asset The address of the asset to be registered
+    /// @param tokenId The token id corresponding to the asset
     /// @return assetId The underlying internal uint128 assetId.
     function registerAsset(uint16 centrifugeId, address asset, uint256 tokenId)
         external

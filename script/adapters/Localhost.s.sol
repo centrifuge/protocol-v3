@@ -47,7 +47,7 @@ contract LocalhostDeployer is FullDeployer {
         token.file("name", "USD Coin");
         token.file("symbol", "USDC");
         token.mint(msg.sender, 10_000_000e6);
-        poolManager.registerAsset(centrifugeId, address(token), 0);
+        poolManager.registerAsset(centrifugeId, address(token));
 
         AssetId assetId = newAssetId(centrifugeId, 1);
 

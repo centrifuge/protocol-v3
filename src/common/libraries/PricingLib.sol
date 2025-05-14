@@ -5,6 +5,7 @@ import {MathLib} from "src/misc/libraries/MathLib.sol";
 import {IERC20Metadata} from "src/misc/interfaces/IERC20.sol";
 import {IERC6909MetadataExt} from "src/misc/interfaces/IERC6909.sol";
 import {D18, d18} from "src/misc/types/D18.sol";
+import {ERC20_TOKEN_ID} from "src/misc/interfaces/IRecoverable.sol";
 
 import {PricingLib} from "src/common/libraries/PricingLib.sol";
 
@@ -244,7 +245,8 @@ library PricingLib {
 
     /// @dev Returns the asset decimals
     function _getAssetDecimals(address asset, uint256 tokenId) private view returns (uint8 assetDecimals) {
-        return tokenId == 0 ? IERC20Metadata(asset).decimals() : IERC6909MetadataExt(asset).decimals(tokenId);
+        return
+            tokenId == ERC20_TOKEN_ID ? IERC20Metadata(asset).decimals() : IERC6909MetadataExt(asset).decimals(tokenId);
     }
 
     /// @dev When converting assets to shares using the price, all values are normalized to PRICE_DECIMALS
