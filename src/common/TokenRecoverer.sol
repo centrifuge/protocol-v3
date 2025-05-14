@@ -2,11 +2,10 @@
 pragma solidity 0.8.28;
 
 import {Auth} from "src/misc/Auth.sol";
-import {IRecoverable} from "src/misc/interfaces/IRecoverable.sol";
+import {ERC20_TOKEN_ID, IRecoverable} from "src/misc/interfaces/IRecoverable.sol";
 
 import {IRoot} from "src/common/interfaces/IRoot.sol";
 import {ITokenRecoverer} from "src/common/interfaces/ITokenRecoverer.sol";
-import {IRecoverable} from "src/misc/interfaces/IRecoverable.sol";
 
 contract TokenRecoverer is Auth, ITokenRecoverer {
     IRoot public immutable root;
@@ -22,7 +21,7 @@ contract TokenRecoverer is Auth, ITokenRecoverer {
     {
         root.relyContract(address(target), address(this));
 
-        if (tokenId == 0) {
+        if (tokenId == ERC20_TOKEN_ID) {
             target.recoverTokens(token, to, amount);
         } else {
             target.recoverTokens(token, tokenId, to, amount);
