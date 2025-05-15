@@ -101,11 +101,8 @@ contract PoolManager is
 
     /// @inheritdoc IPoolManager
     function file(bytes32 what, address factory, bool status) external auth {
-        if (what == "vaultFactory") {
-            vaultFactory[IVaultFactory(factory)] = status;
-        } else {
-            revert FileUnrecognizedParam();
-        }
+        if (what == "vaultFactory") vaultFactory[IVaultFactory(factory)] = status;
+        else revert FileUnrecognizedParam();
         emit File(what, factory, status);
     }
 
@@ -126,13 +123,15 @@ contract PoolManager is
             CrossChainTransferNotAllowed()
         );
 
-        gateway.payTransaction{value: msg.value}(msg.sender);
+        gateway.startTransactionPayment{value: msg.value}(msg.sender);
 
         share.authTransferFrom(msg.sender, msg.sender, address(this), amount);
         share.burn(address(this), amount);
 
         emit TransferShares(centrifugeId, poolId, scId, msg.sender, receiver, amount);
-        sender.sendTransferShares(centrifugeId, poolId, scId, receiver, amount);
+        sender.sendInitiateTransferShares(poolId, scId, centrifugeId, receiver, amount);
+
+        gateway.endTransactionPayment();
     }
 
     // @inheritdoc IPoolManager
@@ -150,7 +149,7 @@ contract PoolManager is
         require(decimals >= MIN_DECIMALS, TooFewDecimals());
         require(decimals <= MAX_DECIMALS, TooManyDecimals());
 
-        gateway.payTransaction{value: msg.value}(msg.sender);
+        gateway.startTransactionPayment{value: msg.value}(msg.sender);
 
         if (tokenId == 0) {
             IERC20Metadata meta = IERC20Metadata(asset);
@@ -174,6 +173,8 @@ contract PoolManager is
         }
 
         sender.sendRegisterAsset(centrifugeId, assetId, decimals);
+
+        gateway.endTransactionPayment();
     }
 
     //----------------------------------------------------------------------------------------------
@@ -306,13 +307,9 @@ contract PoolManager is
     }
 
     /// @inheritdoc IPoolManagerGatewayHandler
-    function handleTransferShares(PoolId poolId, ShareClassId scId, address destinationAddress, uint128 amount)
-        public
-        auth
-    {
+    function executeTransferShares(PoolId poolId, ShareClassId scId, bytes32 receiver, uint128 amount) public auth {
         IShareToken shareToken_ = shareToken(poolId, scId);
-
-        shareToken_.mint(destinationAddress, amount);
+        shareToken_.mint(receiver.toAddress(), amount);
     }
 
     /// @inheritdoc IUpdateContract
@@ -369,28 +366,32 @@ contract PoolManager is
 
     /// @inheritdoc IPoolManager
     function linkVault(PoolId poolId, ShareClassId scId, AssetId assetId, IBaseVault vault) public auth {
-        _shareClass(poolId, scId);
+        ShareClassDetails storage shareClass = _shareClass(poolId, scId);
 
         AssetIdKey memory assetIdKey = _idToAsset[assetId];
 
         IBaseRequestManager manager = vault.manager();
         manager.addVault(poolId, scId, vault, assetIdKey.asset, assetId);
-
         _vaultDetails[vault].isLinked = true;
+
+        IAuth(address(shareClass.shareToken)).rely(address(vault));
+        shareClass.shareToken.updateVault(vault.asset(), address(vault));
 
         emit LinkVault(poolId, scId, assetIdKey.asset, assetIdKey.tokenId, vault);
     }
 
     /// @inheritdoc IPoolManager
     function unlinkVault(PoolId poolId, ShareClassId scId, AssetId assetId, IBaseVault vault) public auth {
-        _shareClass(poolId, scId);
+        ShareClassDetails storage shareClass = _shareClass(poolId, scId);
 
         AssetIdKey memory assetIdKey = _idToAsset[assetId];
 
         IBaseRequestManager manager = vault.manager();
         manager.removeVault(poolId, scId, vault, assetIdKey.asset, assetId);
-
         _vaultDetails[vault].isLinked = false;
+
+        IAuth(address(shareClass.shareToken)).deny(address(vault));
+        shareClass.shareToken.updateVault(vault.asset(), address(0));
 
         emit UnlinkVault(poolId, scId, assetIdKey.asset, assetIdKey.tokenId, vault);
     }
@@ -404,13 +405,10 @@ contract PoolManager is
         ShareClassDetails storage shareClass = _shareClass(poolId, scId);
         require(vaultFactory[factory], InvalidFactory());
 
-        // Rely investment manager on vault so it can mint tokens
-        address[] memory vaultWards = new address[](0);
-
         // Deploy vault
         AssetIdKey memory assetIdKey = _idToAsset[assetId];
         IBaseVault vault = IVaultFactory(factory).newVault(
-            poolId, scId, assetIdKey.asset, assetIdKey.tokenId, shareClass.shareToken, vaultWards
+            poolId, scId, assetIdKey.asset, assetIdKey.tokenId, shareClass.shareToken, new address[](0)
         );
 
         // Check whether asset is an ERC20 token wrapper
@@ -418,12 +416,10 @@ contract PoolManager is
             assetIdKey.asset.staticcall(abi.encodeWithSelector(IERC20Wrapper.underlying.selector));
         // On success, the returned 20 byte address is padded to 32 bytes
         bool isWrappedERC20 = success && data.length == 32;
+
         _vaultDetails[vault] = VaultDetails(assetId, assetIdKey.asset, assetIdKey.tokenId, isWrappedERC20, false);
+        emit DeployVault(poolId, scId, assetIdKey.asset, assetIdKey.tokenId, factory, vault, vault.vaultKind());
 
-        // NOTE - Reverting the manager approvals is not easy. We SHOULD do that if we phase-out a manager
-        VaultKind vaultKind = _relyShareToken(vault, shareClass.shareToken);
-
-        emit DeployVault(poolId, scId, assetIdKey.asset, assetIdKey.tokenId, factory, vault, vaultKind);
         return vault;
     }
 
@@ -561,21 +557,6 @@ contract PoolManager is
             require(poolPerAsset.isValid(), InvalidPrice());
             require(poolPerShare.isValid(), InvalidPrice());
         }
-    }
-
-    /// @dev Sets up approval permissions for pool, i.e. the pool escrow, the base vault manager and potentially a
-    ///      secondary manager (in case of partially sync vault)
-    function _relyShareToken(IBaseVault vault, IShareToken shareToken_) internal returns (VaultKind) {
-        IBaseRequestManager manager = vault.manager();
-        IAuth(address(shareToken_)).rely(address(manager));
-
-        // For sync deposit & async redeem vault, also repeat above for async manager
-        VaultKind vaultKind = vault.vaultKind();
-        if (vaultKind == VaultKind.SyncDepositAsyncRedeem) {
-            IAuth(address(shareToken_)).rely(address(asyncRequestManager));
-        }
-
-        return vaultKind;
     }
 
     function _safeGetAssetDecimals(address asset, uint256 tokenId) private view returns (uint8) {

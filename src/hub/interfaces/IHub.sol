@@ -49,6 +49,9 @@ interface IHub {
     event UpdateContract(
         uint16 indexed centrifugeId, PoolId indexed poolId, ShareClassId scId, bytes32 target, bytes payload
     );
+    event ForwardTransferShares(
+        uint16 indexed centrifugeId, PoolId indexed poolId, ShareClassId scId, bytes32 receiver, uint128 amount
+    );
 
     /// @notice Emitted when a call to `file()` was performed.
     event File(bytes32 what, address addr);
@@ -237,7 +240,7 @@ interface IHub {
     /// @param equityAccount Used to track the equity value
     /// @param gainAccount Used to track the gain value
     /// @param lossAccount Used to track the loss value
-    function createHolding(
+    function initializeHolding(
         PoolId poolId,
         ShareClassId scId,
         AssetId assetId,
@@ -254,7 +257,7 @@ interface IHub {
     /// @param valuation Used to transform between the holding asset and pool currency
     /// @param expenseAccount Used to track the expense value
     /// @param liabilityAccount Used to track the liability value
-    function createLiability(
+    function initializeLiability(
         PoolId poolId,
         ShareClassId scId,
         AssetId assetId,

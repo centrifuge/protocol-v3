@@ -72,16 +72,6 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
     }
 
     //----------------------------------------------------------------------------------------------
-    // Helpers
-    //----------------------------------------------------------------------------------------------
-
-    /// @inheritdoc IMessageDispatcher
-    function estimate(uint16 centrifugeId, bytes calldata payload) external view returns (uint256 amount) {
-        if (centrifugeId == localCentrifugeId) return 0;
-        return gateway.estimate(centrifugeId, payload);
-    }
-
-    //----------------------------------------------------------------------------------------------
     // Outgoing
     //----------------------------------------------------------------------------------------------
 
@@ -179,6 +169,7 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
         }
     }
 
+    /// @inheritdoc IPoolMessageSender
     function sendNotifyPricePoolPerAsset(PoolId poolId, ShareClassId scId, AssetId assetId, D18 price) external auth {
         uint64 timestamp = block.timestamp.toUint64();
         if (assetId.centrifugeId() == localCentrifugeId) {
@@ -203,12 +194,19 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
         ShareClassId scId,
         AssetId assetId,
         bytes32 investor,
-        uint128 assetAmount,
-        uint128 shareAmount
+        uint128 fulfilledAssetAmount,
+        uint128 fulfilledShareAmount,
+        uint128 cancelledAssetAmount
     ) external auth {
         if (assetId.centrifugeId() == localCentrifugeId) {
             investmentManager.fulfillDepositRequest(
-                poolId, scId, investor.toAddress(), assetId, assetAmount, shareAmount
+                poolId,
+                scId,
+                investor.toAddress(),
+                assetId,
+                fulfilledAssetAmount,
+                fulfilledShareAmount,
+                cancelledAssetAmount
             );
         } else {
             gateway.send(
@@ -218,8 +216,9 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
                     scId: scId.raw(),
                     investor: investor,
                     assetId: assetId.raw(),
-                    assetAmount: assetAmount,
-                    shareAmount: shareAmount
+                    fulfilledAssetAmount: fulfilledAssetAmount,
+                    fulfilledShareAmount: fulfilledShareAmount,
+                    cancelledAssetAmount: cancelledAssetAmount
                 }).serialize()
             );
         }
@@ -231,12 +230,19 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
         ShareClassId scId,
         AssetId assetId,
         bytes32 investor,
-        uint128 assetAmount,
-        uint128 shareAmount
+        uint128 fulfilledAssetAmount,
+        uint128 fulfilledShareAmount,
+        uint128 cancelledShareAmount
     ) external auth {
         if (assetId.centrifugeId() == localCentrifugeId) {
             investmentManager.fulfillRedeemRequest(
-                poolId, scId, investor.toAddress(), assetId, assetAmount, shareAmount
+                poolId,
+                scId,
+                investor.toAddress(),
+                assetId,
+                fulfilledAssetAmount,
+                fulfilledShareAmount,
+                cancelledShareAmount
             );
         } else {
             gateway.send(
@@ -246,58 +252,9 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
                     scId: scId.raw(),
                     investor: investor,
                     assetId: assetId.raw(),
-                    assetAmount: assetAmount,
-                    shareAmount: shareAmount
-                }).serialize()
-            );
-        }
-    }
-
-    /// @inheritdoc IPoolMessageSender
-    function sendFulfilledCancelDepositRequest(
-        PoolId poolId,
-        ShareClassId scId,
-        AssetId assetId,
-        bytes32 investor,
-        uint128 cancelledAmount
-    ) external auth {
-        if (assetId.centrifugeId() == localCentrifugeId) {
-            investmentManager.fulfillCancelDepositRequest(
-                poolId, scId, investor.toAddress(), assetId, cancelledAmount, cancelledAmount
-            );
-        } else {
-            gateway.send(
-                assetId.centrifugeId(),
-                MessageLib.FulfilledCancelDepositRequest({
-                    poolId: poolId.raw(),
-                    scId: scId.raw(),
-                    investor: investor,
-                    assetId: assetId.raw(),
-                    cancelledAmount: cancelledAmount
-                }).serialize()
-            );
-        }
-    }
-
-    /// @inheritdoc IPoolMessageSender
-    function sendFulfilledCancelRedeemRequest(
-        PoolId poolId,
-        ShareClassId scId,
-        AssetId assetId,
-        bytes32 investor,
-        uint128 cancelledShares
-    ) external auth {
-        if (assetId.centrifugeId() == localCentrifugeId) {
-            investmentManager.fulfillCancelRedeemRequest(poolId, scId, investor.toAddress(), assetId, cancelledShares);
-        } else {
-            gateway.send(
-                assetId.centrifugeId(),
-                MessageLib.FulfilledCancelRedeemRequest({
-                    poolId: poolId.raw(),
-                    scId: scId.raw(),
-                    investor: investor,
-                    assetId: assetId.raw(),
-                    cancelledShares: cancelledShares
+                    fulfilledAssetAmount: fulfilledAssetAmount,
+                    fulfilledShareAmount: fulfilledShareAmount,
+                    cancelledShareAmount: cancelledShareAmount
                 }).serialize()
             );
         }
@@ -506,50 +463,45 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
         }
     }
 
-    /// @inheritdoc IRootMessageSender
-    function sendInitiateRecovery(uint16 centrifugeId, uint16 adapterCentrifugeId, bytes32 adapter, bytes32 hash)
-        external
-        auth
-    {
-        if (centrifugeId == localCentrifugeId) {
-            gateway.initiateRecovery(adapterCentrifugeId, IAdapter(adapter.toAddress()), hash);
-        } else {
-            gateway.send(
-                centrifugeId,
-                MessageLib.InitiateRecovery({hash: hash, adapter: adapter, centrifugeId: adapterCentrifugeId}).serialize(
-                )
-            );
-        }
-    }
-
-    /// @inheritdoc IRootMessageSender
-    function sendDisputeRecovery(uint16 centrifugeId, uint16 adapterCentrifugeId, bytes32 adapter, bytes32 hash)
-        external
-        auth
-    {
-        if (centrifugeId == localCentrifugeId) {
-            gateway.disputeRecovery(adapterCentrifugeId, IAdapter(adapter.toAddress()), hash);
-        } else {
-            gateway.send(
-                centrifugeId,
-                MessageLib.DisputeRecovery({hash: hash, adapter: adapter, centrifugeId: adapterCentrifugeId}).serialize(
-                )
-            );
-        }
-    }
-
     /// @inheritdoc IVaultMessageSender
-    function sendTransferShares(uint16 centrifugeId, PoolId poolId, ShareClassId scId, bytes32 receiver, uint128 amount)
-        external
-        auth
-    {
+    function sendInitiateTransferShares(
+        PoolId poolId,
+        ShareClassId scId,
+        uint16 centrifugeId,
+        bytes32 receiver,
+        uint128 amount
+    ) external auth {
+        gateway.send(
+            poolId.centrifugeId(),
+            MessageLib.InitiateTransferShares({
+                poolId: poolId.raw(),
+                scId: scId.raw(),
+                centrifugeId: centrifugeId,
+                receiver: receiver,
+                amount: amount
+            }).serialize()
+        );
+    }
+
+    /// @inheritdoc IPoolMessageSender
+    function sendExecuteTransferShares(
+        PoolId poolId,
+        ShareClassId scId,
+        uint16 centrifugeId,
+        bytes32 receiver,
+        uint128 amount
+    ) external auth {
         if (centrifugeId == localCentrifugeId) {
-            poolManager.handleTransferShares(poolId, scId, receiver.toAddress(), amount);
+            poolManager.executeTransferShares(poolId, scId, receiver, amount);
         } else {
-            gateway.send(
+            gateway.addUnpaidMessage(
                 centrifugeId,
-                MessageLib.TransferShares({poolId: poolId.raw(), scId: scId.raw(), receiver: receiver, amount: amount})
-                    .serialize()
+                MessageLib.ExecuteTransferShares({
+                    poolId: poolId.raw(),
+                    scId: scId.raw(),
+                    receiver: receiver,
+                    amount: amount
+                }).serialize()
             );
         }
     }
@@ -641,7 +593,6 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
         PoolId poolId,
         ShareClassId scId,
         AssetId assetId,
-        address provider,
         uint128 amount,
         D18 pricePoolPerAsset,
         bool isIncrease
@@ -655,7 +606,6 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
                     poolId: poolId.raw(),
                     scId: scId.raw(),
                     assetId: assetId.raw(),
-                    who: provider.toBytes32(),
                     amount: amount,
                     pricePerUnit: pricePoolPerAsset.raw(),
                     timestamp: uint64(block.timestamp),
