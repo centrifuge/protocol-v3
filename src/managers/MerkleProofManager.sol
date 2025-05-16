@@ -42,6 +42,11 @@ contract MerkleProofManager is Auth, Recoverable, IMerkleProofManager, IUpdateCo
         // TODO: add updatePolicy
     }
 
+    function setPolicy(address strategist, bytes32 root) external auth {
+        // TEMP for testing purposes, until UpdateContract is implemented
+        policy[strategist] = root;
+    }
+
     //----------------------------------------------------------------------------------------------
     // Strategist actions
     //----------------------------------------------------------------------------------------------
@@ -65,20 +70,11 @@ contract MerkleProofManager is Auth, Recoverable, IMerkleProofManager, IUpdateCo
 
         for (uint256 i; i < targetsLength; ++i) {
             _verifyCallData(strategistPolicy, proofs[i], decoders[i], targets[i], values[i], targetData[i]);
+
             _functionCallWithValue(targets[i], targetData[i], values[i]);
+            emit CallExecuted(targets[i], bytes4(targetData[i]), targetData[i], values[i]);
         }
-
-        emit CallsExecuted(targetsLength);
     }
-
-    //----------------------------------------------------------------------------------------------
-    // ERC-165
-    //----------------------------------------------------------------------------------------------
-
-    // /// @inheritdoc IERC165
-    // function supportsInterface(bytes4 interfaceId) public pure returns (bool) {
-    //     return interfaceId == type(IERC165).interfaceId;
-    // }
 
     //----------------------------------------------------------------------------------------------
     // Helper methods

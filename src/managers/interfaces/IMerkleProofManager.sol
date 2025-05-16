@@ -3,7 +3,7 @@ pragma solidity >=0.5.0;
 
 interface IMerkleProofManager {
     event ManageRootUpdated(address indexed strategist, bytes32 oldRoot, bytes32 newRoot);
-    event CallsExecuted(uint256 callsMade);
+    event CallExecuted(address indexed target, bytes4 indexed selector, bytes targetData, uint256 value);
 
     error InsufficientBalance();
     error CallFailed();

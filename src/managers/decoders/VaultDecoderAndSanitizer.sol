@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {BaseDecoderAndSanitizer} from "src/managers/DecodersAndSanitizers/BaseDecoderAndSanitizer.sol";
+import {BaseDecoderAndSanitizer} from "src/managers/decoders/BaseDecoderAndSanitizer.sol";
 
 contract VaultDecoderAndSanitizer is BaseDecoderAndSanitizer {
     // @desc deposit into the ERC4626 vault
