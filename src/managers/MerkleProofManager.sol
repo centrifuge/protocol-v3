@@ -13,23 +13,13 @@ import {MessageLib, UpdateContractType} from "src/common/libraries/MessageLib.so
 import {IBalanceSheet} from "src/vaults/interfaces/IBalanceSheet.sol";
 import {IUpdateContract} from "src/vaults/interfaces/IUpdateContract.sol";
 
+import {IMerkleProofManager} from "src/managers/interfaces/IMerkleProofManager.sol";
+
 /// @title MerkleProofManager
 /// @author Modified from Boring Vaults
 /// (https://github.com/Se7en-Seas/boring-vault/blob/main/src/base/Roles/ManagerWithMerkleVerification.sol)
-contract MerkleProofManager is Auth, Recoverable, IUpdateContract {
+contract MerkleProofManager is Auth, Recoverable, IMerkleProofManager, IUpdateContract {
     using MathLib for uint256;
-
-    event ManageRootUpdated(address indexed strategist, bytes32 oldRoot, bytes32 newRoot);
-    event CallsExecuted(uint256 callsMade);
-
-    error InsufficientBalance();
-    error CallFailed();
-    error InvalidManageProofLength();
-    error InvalidTargetDataLength();
-    error InvalidValuesLength();
-    error InvalidDecodersAndSanitizersLength();
-    error FailedToVerifyManageProof(address target, bytes targetData, uint256 value);
-    error NotAStrategist();
 
     PoolId public immutable poolId;
     IBalanceSheet public immutable balanceSheet;
@@ -56,6 +46,7 @@ contract MerkleProofManager is Auth, Recoverable, IUpdateContract {
     // Strategist actions
     //----------------------------------------------------------------------------------------------
 
+    /// @inheritdoc IMerkleProofManager
     function execute(
         bytes32[][] calldata proofs,
         address[] calldata decoders,
