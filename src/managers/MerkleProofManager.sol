@@ -33,7 +33,7 @@ contract MerkleProofManager is Auth, Recoverable, IUpdateContract {
 
     IBalanceSheet public immutable balanceSheet;
 
-    mapping(address => bytes32) public manageRoot;
+    mapping(address => bytes32) public policy;
 
     constructor(IBalanceSheet balanceSheet_, address deployer) Auth(deployer) {
         balanceSheet = balanceSheet_;
@@ -47,7 +47,7 @@ contract MerkleProofManager is Auth, Recoverable, IUpdateContract {
     function update(PoolId poolId, ShareClassId, /* scId */ bytes calldata payload) external auth {
         uint8 kind = uint8(MessageLib.updateContractType(payload));
 
-        // TODO: add updateManageRoot
+        // TODO: add updatePolicy
     }
 
     //----------------------------------------------------------------------------------------------
@@ -67,7 +67,7 @@ contract MerkleProofManager is Auth, Recoverable, IUpdateContract {
         require(targetsLength == values.length, InvalidValuesLength());
         require(targetsLength == decodersAndSanitizers.length, InvalidDecodersAndSanitizersLength());
 
-        bytes32 strategistManageRoot = manageRoot[msg.sender];
+        bytes32 strategistManageRoot = policy[msg.sender];
         require(strategistManageRoot != bytes32(0), NotAStrategist());
 
         for (uint256 i; i < targetsLength; ++i) {
