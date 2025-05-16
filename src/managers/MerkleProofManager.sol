@@ -33,7 +33,6 @@ contract MerkleProofManager is Auth, Recoverable, IUpdateContract {
     IBalanceSheet public immutable balanceSheet;
 
     mapping(address => bytes32) public manageRoot;
-    mapping(PoolId => mapping(address => bool)) public manager;
 
     constructor(IBalanceSheet balanceSheet_, address deployer) Auth(deployer) {
         balanceSheet = balanceSheet_;
