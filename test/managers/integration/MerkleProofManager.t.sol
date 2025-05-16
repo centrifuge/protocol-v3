@@ -45,6 +45,17 @@ contract BalanceSheetTest is BaseTest {
             bytes32(""),
             fullRestrictionsHook
         );
+        poolManager.updatePricePoolPerShare(
+            POOL_A, defaultTypedShareClassId, defaultPricePoolPerShare.raw(), uint64(block.timestamp)
+        );
+        poolManager.updatePricePoolPerAsset(
+            POOL_A, defaultTypedShareClassId, assetId, defaultPricePoolPerShare.raw(), uint64(block.timestamp)
+        );
+        poolManager.updateRestriction(
+            POOL_A,
+            defaultTypedShareClassId,
+            MessageLib.UpdateRestrictionMember({user: address(this).toBytes32(), validUntil: MAX_UINT64}).serialize()
+        );
 
         manager = new MerkleProofManager(POOL_A, balanceSheet, address(this));
     }
@@ -65,14 +76,14 @@ contract BalanceSheetTest is BaseTest {
             abi.encodePacked(decoder, address(balanceSheet), false, BalanceSheet.withdraw.selector, addresses)
         );
 
-        ManageLeaf[] memory leafs = new ManageLeaf[](2);
+        ManageLeaf[] memory leafs = new ManageLeaf[](1);
         leafs[0] = ManageLeaf(
             address(balanceSheet),
             false,
             "withdraw(uint64,bytes16,address,uint256,address,uint128)",
             new address[](2),
             "",
-            decoder
+            address(decoder)
         );
         leafs[0].argumentAddresses[0] = address(erc20);
         leafs[0].argumentAddresses[1] = receiver;
@@ -95,7 +106,7 @@ contract BalanceSheetTest is BaseTest {
         uint256[] memory values = new uint256[](1);
 
         address[] memory decodersAndSanitizers = new address[](1);
-        decodersAndSanitizers[0] = decoder;
+        decodersAndSanitizers[0] = address(decoder);
 
         assertEq(erc20.balanceOf(receiver), 0);
         manager.execute(manageProofs, decodersAndSanitizers, targets, targetData, values);
@@ -114,6 +125,40 @@ contract BalanceSheetTest is BaseTest {
         address decoderAndSanitizer;
     }
 
+    function _buildTrees(bytes32[][] memory merkleTreeIn) internal pure returns (bytes32[][] memory merkleTreeOut) {
+        // We are adding another row to the merkle tree, so make merkleTreeOut be 1 longer.
+        uint256 merkleTreeIn_length = merkleTreeIn.length;
+        merkleTreeOut = new bytes32[][](merkleTreeIn_length + 1);
+        uint256 layer_length;
+        // Iterate through merkleTreeIn to copy over data.
+        for (uint256 i; i < merkleTreeIn_length; ++i) {
+            layer_length = merkleTreeIn[i].length;
+            merkleTreeOut[i] = new bytes32[](layer_length);
+            for (uint256 j; j < layer_length; ++j) {
+                merkleTreeOut[i][j] = merkleTreeIn[i][j];
+            }
+        }
+
+        uint256 next_layer_length;
+        if (layer_length % 2 != 0) {
+            next_layer_length = (layer_length + 1) / 2;
+        } else {
+            next_layer_length = layer_length / 2;
+        }
+        merkleTreeOut[merkleTreeIn_length] = new bytes32[](next_layer_length);
+        uint256 count;
+        for (uint256 i; i < layer_length; i += 2) {
+            merkleTreeOut[merkleTreeIn_length][count] =
+                _hashPair(merkleTreeIn[merkleTreeIn_length - 1][i], merkleTreeIn[merkleTreeIn_length - 1][i + 1]);
+            count++;
+        }
+
+        if (next_layer_length > 1) {
+            // We need to process the next layer of leaves.
+            merkleTreeOut = _buildTrees(merkleTreeOut);
+        }
+    }
+
     function _generateMerkleTree(ManageLeaf[] memory manageLeafs) internal view returns (bytes32[][] memory tree) {
         uint256 leafsLength = manageLeafs.length;
         bytes32[][] memory leafs = new bytes32[][](1);
@@ -121,7 +166,7 @@ contract BalanceSheetTest is BaseTest {
         for (uint256 i; i < leafsLength; ++i) {
             bytes4 selector = bytes4(keccak256(abi.encodePacked(manageLeafs[i].signature)));
             bytes memory rawDigest = abi.encodePacked(
-                rawDataDecoderAndSanitizer, manageLeafs[i].target, manageLeafs[i].canSendValue, selector
+                address(decoder), manageLeafs[i].target, manageLeafs[i].canSendValue, selector // TODO replace address(decoder)
             );
             uint256 argumentAddressesLength = manageLeafs[i].argumentAddresses.length;
             for (uint256 j; j < argumentAddressesLength; ++j) {
@@ -155,7 +200,7 @@ contract BalanceSheetTest is BaseTest {
             // Generate manage proof.
             bytes4 selector = bytes4(keccak256(abi.encodePacked(manageLeafs[i].signature)));
             bytes memory rawDigest = abi.encodePacked(
-                getAddress(sourceChain, "rawDataDecoderAndSanitizer"),
+                address(decoder), // TODO more generic
                 manageLeafs[i].target,
                 manageLeafs[i].canSendValue,
                 selector
