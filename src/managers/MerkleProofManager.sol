@@ -31,11 +31,13 @@ contract MerkleProofManager is Auth, Recoverable, IUpdateContract {
     error FailedToVerifyManageProof(address target, bytes targetData, uint256 value);
     error NotAStrategist();
 
+    PoolId public immutable poolId;
     IBalanceSheet public immutable balanceSheet;
 
-    mapping(address => bytes32) public policy;
+    mapping(address strategist => bytes32 root) public policy;
 
-    constructor(IBalanceSheet balanceSheet_, address deployer) Auth(deployer) {
+    constructor(PoolId poolId_, IBalanceSheet balanceSheet_, address deployer) Auth(deployer) {
+        poolId = poolId_;
         balanceSheet = balanceSheet_;
     }
 
@@ -44,7 +46,7 @@ contract MerkleProofManager is Auth, Recoverable, IUpdateContract {
     //----------------------------------------------------------------------------------------------
 
     /// @inheritdoc IUpdateContract
-    function update(PoolId poolId, ShareClassId, /* scId */ bytes calldata payload) external auth {
+    function update(PoolId, /* poolId */ ShareClassId, /* scId */ bytes calldata payload) external auth {
         uint8 kind = uint8(MessageLib.updateContractType(payload));
 
         // TODO: add updatePolicy
@@ -54,26 +56,24 @@ contract MerkleProofManager is Auth, Recoverable, IUpdateContract {
     // Strategist actions
     //----------------------------------------------------------------------------------------------
 
-    function manageWithMerkleVerification(
-        bytes32[][] calldata manageProofs,
-        address[] calldata decodersAndSanitizers,
+    function execute(
+        bytes32[][] calldata proofs,
+        address[] calldata decoders,
         address[] calldata targets,
         bytes[] calldata targetData,
         uint256[] calldata values
     ) external {
         uint256 targetsLength = targets.length;
-        require(targetsLength == manageProofs.length, InvalidManageProofLength());
+        require(targetsLength == proofs.length, InvalidManageProofLength());
+        require(targetsLength == decoders.length, InvalidDecodersAndSanitizersLength());
         require(targetsLength == targetData.length, InvalidTargetDataLength());
         require(targetsLength == values.length, InvalidValuesLength());
-        require(targetsLength == decodersAndSanitizers.length, InvalidDecodersAndSanitizersLength());
 
-        bytes32 strategistManageRoot = policy[msg.sender];
-        require(strategistManageRoot != bytes32(0), NotAStrategist());
+        bytes32 strategistPolicy = policy[msg.sender];
+        require(strategistPolicy != bytes32(0), NotAStrategist());
 
         for (uint256 i; i < targetsLength; ++i) {
-            _verifyCallData(
-                strategistManageRoot, manageProofs[i], decodersAndSanitizers[i], targets[i], values[i], targetData[i]
-            );
+            _verifyCallData(strategistPolicy, proofs[i], decoders[i], targets[i], values[i], targetData[i]);
             _functionCallWithValue(targets[i], targetData[i], values[i]);
         }
 
@@ -90,54 +90,21 @@ contract MerkleProofManager is Auth, Recoverable, IUpdateContract {
     // }
 
     //----------------------------------------------------------------------------------------------
-    // Merkle tree verification methods
+    // Helper methods
     //----------------------------------------------------------------------------------------------
 
     function _verifyCallData(
-        bytes32 currentManageRoot,
-        bytes32[] calldata manageProof,
-        address decoderAndSanitizer,
+        bytes32 root,
+        bytes32[] calldata proof,
+        address decoder,
         address target,
         uint256 value,
         bytes calldata targetData
     ) internal view {
-        // Use address decoder to get addresses in call data.
-        bytes memory packedArgumentAddresses = abi.decode(_functionStaticCall(decoderAndSanitizer, targetData), (bytes));
-        if (
-            !_verifyManageProof(
-                currentManageRoot,
-                manageProof,
-                target,
-                decoderAndSanitizer,
-                value,
-                bytes4(targetData),
-                packedArgumentAddresses
-            )
-        ) {
-            revert FailedToVerifyManageProof(target, targetData, value);
-        }
+        bytes memory addresses = abi.decode(_functionStaticCall(decoder, targetData), (bytes));
+        bytes32 leaf = keccak256(abi.encodePacked(decoder, target, value > 0, bytes4(targetData), addresses));
+        require(MerkleProofLib.verify(proof, root, leaf), FailedToVerifyManageProof(target, targetData, value));
     }
-
-    function _verifyManageProof(
-        bytes32 root,
-        bytes32[] calldata proof,
-        address target,
-        address decoderAndSanitizer,
-        uint256 value,
-        bytes4 selector,
-        bytes memory packedArgumentAddresses
-    ) internal pure returns (bool) {
-        bool valueNonZero = value > 0;
-
-        bytes32 leaf =
-            keccak256(abi.encodePacked(decoderAndSanitizer, target, valueNonZero, selector, packedArgumentAddresses));
-
-        return MerkleProofLib.verify(proof, root, leaf);
-    }
-
-    //----------------------------------------------------------------------------------------------
-    // Helper methods
-    //----------------------------------------------------------------------------------------------
 
     function _functionStaticCall(address target, bytes memory data) internal view returns (bytes memory) {
         (bool success, bytes memory returnData) = target.staticcall(data);
