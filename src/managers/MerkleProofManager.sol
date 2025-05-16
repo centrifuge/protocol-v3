@@ -14,7 +14,8 @@ import {IBalanceSheet} from "src/vaults/interfaces/IBalanceSheet.sol";
 import {IUpdateContract} from "src/vaults/interfaces/IUpdateContract.sol";
 
 /// @title MerkleProofManager
-/// @author Modified from Boring Vaults (https://github.com/Se7en-Seas/boring-vault/blob/main/src/base/Roles/ManagerWithMerkleVerification.sol)
+/// @author Modified from Boring Vaults
+/// (https://github.com/Se7en-Seas/boring-vault/blob/main/src/base/Roles/ManagerWithMerkleVerification.sol)
 contract MerkleProofManager is Auth, Recoverable, IUpdateContract {
     using MathLib for uint256;
 
