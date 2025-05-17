@@ -13,6 +13,7 @@ import {BalanceSheet} from "src/vaults/BalanceSheet.sol";
 
 import {MerkleProofManager} from "src/managers/MerkleProofManager.sol";
 import {VaultDecoderAndSanitizer} from "src/managers/decoders/VaultDecoderAndSanitizer.sol";
+import {console} from "forge-std/console.sol";
 
 contract BalanceSheetTest is BaseTest {
     using MessageLib for *;
@@ -61,6 +62,8 @@ contract BalanceSheetTest is BaseTest {
     }
 
     function testExecute(uint128 amount) public {
+        address receiver = makeAddr("receiver");
+
         // Deposit ERC20 in balance sheet
         balanceSheet.setQueue(POOL_A, defaultTypedShareClassId, true);
 
@@ -70,13 +73,7 @@ contract BalanceSheetTest is BaseTest {
         balanceSheet.deposit(POOL_A, defaultTypedShareClassId, address(erc20), erc20TokenId, defaultAmount);
 
         // Generate policy root hash
-        address receiver = makeAddr("receiver");
-        bytes memory addresses = abi.encodePacked(address(erc20), receiver);
-        bytes32 root = keccak256(
-            abi.encodePacked(decoder, address(balanceSheet), false, BalanceSheet.withdraw.selector, addresses)
-        );
-
-        ManageLeaf[] memory leafs = new ManageLeaf[](1);
+        ManageLeaf[] memory leafs = new ManageLeaf[](2);
         leafs[0] = ManageLeaf(
             address(balanceSheet),
             false,
@@ -88,26 +85,46 @@ contract BalanceSheetTest is BaseTest {
         leafs[0].argumentAddresses[0] = address(erc20);
         leafs[0].argumentAddresses[1] = receiver;
 
+        leafs[1] = ManageLeaf(
+            address(balanceSheet),
+            false,
+            "deposit(uint64,bytes16,address,uint256,uint128)",
+            new address[](1),
+            "",
+            address(decoder)
+        );
+        leafs[1].argumentAddresses[0] = address(erc20);
+
+        console.log("1");
         bytes32[][] memory manageTree = _generateMerkleTree(leafs);
+        console.log("2");
 
         manager.setPolicy(address(this), manageTree[1][0]);
 
         // Execute
-        address[] memory targets = new address[](1);
+        address[] memory targets = new address[](2);
         targets[0] = address(balanceSheet);
+        targets[1] = address(balanceSheet);
 
-        bytes[] memory targetData = new bytes[](1);
+        bytes[] memory targetData = new bytes[](2);
         targetData[0] = abi.encodeWithSelector(
             BalanceSheet.withdraw.selector, POOL_A, defaultTypedShareClassId, address(erc20), 0, receiver, amount
         );
+        targetData[1] = abi.encodeWithSelector(
+            BalanceSheet.deposit.selector, POOL_A, defaultTypedShareClassId, address(erc20), 0, amount
+        );
 
+        console.log("3");
         (bytes32[][] memory manageProofs) = _getProofsUsingTree(leafs, manageTree);
+        console.log("4");
 
-        uint256[] memory values = new uint256[](1);
+        uint256[] memory values = new uint256[](2);
 
-        address[] memory decodersAndSanitizers = new address[](1);
+        address[] memory decodersAndSanitizers = new address[](2);
         decodersAndSanitizers[0] = address(decoder);
+        decodersAndSanitizers[1] = address(decoder);
 
+        console.log("5");
         assertEq(erc20.balanceOf(receiver), 0);
         manager.execute(manageProofs, decodersAndSanitizers, targets, targetData, values);
         assertEq(erc20.balanceOf(receiver), amount);
