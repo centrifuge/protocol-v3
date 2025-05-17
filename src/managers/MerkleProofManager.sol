@@ -36,9 +36,7 @@ contract MerkleProofManager is Auth, Recoverable, IMerkleProofManager, IUpdateCo
     //----------------------------------------------------------------------------------------------
 
     /// @inheritdoc IUpdateContract
-    function update(PoolId, /* poolId */ ShareClassId, /* scId */ bytes calldata payload) external auth {
-        uint8 kind = uint8(MessageLib.updateContractType(payload));
-
+    function update(PoolId, /* poolId */ ShareClassId, /* scId */ bytes calldata payload) external view auth {
         // TODO: add updatePolicy
     }
 
