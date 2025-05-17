@@ -102,8 +102,7 @@ contract BalanceSheetTest is BaseTest {
         // );
         // leafs[1].argumentAddresses[0] = address(erc20);
 
-        leafs[1] =
-            ManageLeaf(address(erc20), false, "approve(address,uint256)", new address[](1), "", address(decoder));
+        leafs[1] = ManageLeaf(address(erc20), false, "approve(address,uint256)", new address[](1), "", address(decoder));
         leafs[1].argumentAddresses[0] = address(balanceSheet);
 
         bytes32[][] memory manageTree = _generateMerkleTree(leafs);
