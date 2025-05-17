@@ -95,7 +95,7 @@ contract MerkleProofManager is Auth, Recoverable, IMerkleProofManager, IUpdateCo
 
     function _functionStaticCall(address target, bytes memory data) internal view returns (bytes memory) {
         (bool success, bytes memory returnData) = target.staticcall(data);
-        require(success && (returnData.length == 0 || abi.decode(returnData, (bool))), CallFailed());
+        require(success, CallFailed());
 
         return returnData;
     }
@@ -104,7 +104,7 @@ contract MerkleProofManager is Auth, Recoverable, IMerkleProofManager, IUpdateCo
         require(address(this).balance >= value, InsufficientBalance());
 
         (bool success, bytes memory returnData) = target.call{value: value}(data);
-        require(success && (returnData.length == 0 || abi.decode(returnData, (bool))), CallFailed());
+        require(success, CallFailed());
 
         return returnData;
     }

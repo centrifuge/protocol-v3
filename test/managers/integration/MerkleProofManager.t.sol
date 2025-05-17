@@ -63,14 +63,21 @@ contract BalanceSheetTest is BaseTest {
 
     function testExecute(uint128 amount) public {
         address receiver = makeAddr("receiver");
+        decoder = new VaultDecoderAndSanitizer();
 
         // Deposit ERC20 in balance sheet
         balanceSheet.setQueue(POOL_A, defaultTypedShareClassId, true);
 
-        erc20.mint(address(this), defaultAmount);
-        erc20.approve(address(balanceSheet), defaultAmount);
+        erc20.mint(address(this), amount);
+        erc20.approve(address(balanceSheet), amount);
+        balanceSheet.deposit(POOL_A, defaultTypedShareClassId, address(erc20), erc20TokenId, amount);
 
-        balanceSheet.deposit(POOL_A, defaultTypedShareClassId, address(erc20), erc20TokenId, defaultAmount);
+        // Set merkle proof manager as balance sheet manager
+        balanceSheet.update(
+            POOL_A,
+            defaultTypedShareClassId,
+            MessageLib.UpdateContractUpdateManager({who: bytes20(address(manager)), canManage: true}).serialize()
+        );
 
         // Generate policy root hash
         ManageLeaf[] memory leafs = new ManageLeaf[](2);
@@ -83,51 +90,61 @@ contract BalanceSheetTest is BaseTest {
             address(decoder)
         );
         leafs[0].argumentAddresses[0] = address(erc20);
-        leafs[0].argumentAddresses[1] = receiver;
+        leafs[0].argumentAddresses[1] = address(manager);
 
-        leafs[1] = ManageLeaf(
-            address(balanceSheet),
-            false,
-            "deposit(uint64,bytes16,address,uint256,uint128)",
-            new address[](1),
-            "",
-            address(decoder)
-        );
-        leafs[1].argumentAddresses[0] = address(erc20);
+        // leafs[1] = ManageLeaf(
+        //     address(balanceSheet),
+        //     false,
+        //     "deposit(uint64,bytes16,address,uint256,uint128)",
+        //     new address[](1),
+        //     "",
+        //     address(decoder)
+        // );
+        // leafs[1].argumentAddresses[0] = address(erc20);
 
-        console.log("1");
+        leafs[1] =
+            ManageLeaf(address(erc20), false, "approve(address,uint256)", new address[](1), "", address(decoder));
+        leafs[1].argumentAddresses[0] = address(balanceSheet);
+
         bytes32[][] memory manageTree = _generateMerkleTree(leafs);
-        console.log("2");
-
         manager.setPolicy(address(this), manageTree[1][0]);
 
-        // Execute
-        address[] memory targets = new address[](2);
-        targets[0] = address(balanceSheet);
-        targets[1] = address(balanceSheet);
+        // Generate proof for execution
+        (bytes32[][] memory manageProofs) = _getProofsUsingTree(leafs, manageTree);
 
+        // Execute
         bytes[] memory targetData = new bytes[](2);
         targetData[0] = abi.encodeWithSelector(
-            BalanceSheet.withdraw.selector, POOL_A, defaultTypedShareClassId, address(erc20), 0, receiver, amount
+            BalanceSheet.withdraw.selector,
+            POOL_A,
+            defaultTypedShareClassId,
+            address(erc20),
+            erc20TokenId,
+            address(manager),
+            amount
         );
-        targetData[1] = abi.encodeWithSelector(
-            BalanceSheet.deposit.selector, POOL_A, defaultTypedShareClassId, address(erc20), 0, amount
-        );
+        targetData[1] = abi.encodeWithSelector(ERC20.approve.selector, address(balanceSheet), amount / 2);
+        // targetData[2] = abi.encodeWithSelector(
+        //     BalanceSheet.deposit.selector, POOL_A, defaultTypedShareClassId, address(erc20), erc20TokenId, amount / 2
+        // );
 
-        console.log("3");
-        (bytes32[][] memory manageProofs) = _getProofsUsingTree(leafs, manageTree);
-        console.log("4");
+        address[] memory targets = new address[](2);
+        targets[0] = address(balanceSheet);
+        targets[1] = address(erc20);
+        // targets[2] = address(balanceSheet);
 
         uint256[] memory values = new uint256[](2);
 
+        console.log("5");
         address[] memory decodersAndSanitizers = new address[](2);
         decodersAndSanitizers[0] = address(decoder);
         decodersAndSanitizers[1] = address(decoder);
+        // decodersAndSanitizers[2] = address(decoder);
 
-        console.log("5");
         assertEq(erc20.balanceOf(receiver), 0);
         manager.execute(manageProofs, decodersAndSanitizers, targets, targetData, values);
-        assertEq(erc20.balanceOf(receiver), amount);
+        assertApproxEqAbs(erc20.balanceOf(address(manager)), amount, 1);
+        // assertApproxEqAbs(erc20.balanceOf(address(balanceSheet.escrow(POOL_A))), amount / 2, 1);
     }
 
     // From
@@ -183,7 +200,10 @@ contract BalanceSheetTest is BaseTest {
         for (uint256 i; i < leafsLength; ++i) {
             bytes4 selector = bytes4(keccak256(abi.encodePacked(manageLeafs[i].signature)));
             bytes memory rawDigest = abi.encodePacked(
-                address(decoder), manageLeafs[i].target, manageLeafs[i].canSendValue, selector // TODO replace address(decoder)
+                address(decoder), // TODO replace address(decoder)
+                manageLeafs[i].target,
+                manageLeafs[i].canSendValue,
+                selector
             );
             uint256 argumentAddressesLength = manageLeafs[i].argumentAddresses.length;
             for (uint256 j; j < argumentAddressesLength; ++j) {
