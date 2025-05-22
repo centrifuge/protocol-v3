@@ -330,6 +330,30 @@ contract TestMessageLibIdentities is Test {
         // This message is a submessage and has not static message length defined
     }
 
+    function testUpdateContractToggle(bytes32 what, bool isEnabled) public pure {
+        MessageLib.UpdateContractToggle memory a =
+            MessageLib.UpdateContractToggle({what: what, isEnabled: isEnabled});
+        MessageLib.UpdateContractToggle memory b =
+            MessageLib.deserializeUpdateContractToggle(a.serialize());
+
+        assertEq(a.what, b.what);
+        assertEq(a.isEnabled, b.isEnabled);
+        // This message is a submessage and has not static message length defined
+    }
+
+    function testUpdateContractUpdateAddress(bytes32 kind, bytes32 what, bytes32 who, bool isEnabled) public pure {
+        MessageLib.UpdateContractUpdateAddress memory a =
+            MessageLib.UpdateContractUpdateAddress({kind: kind, what: what, who: who, isEnabled: isEnabled});
+        MessageLib.UpdateContractUpdateAddress memory b =
+            MessageLib.deserializeUpdateContractUpdateAddress(a.serialize());
+
+        assertEq(a.kind, b.kind);
+        assertEq(a.what, b.what);
+        assertEq(a.who, b.who);
+        assertEq(a.isEnabled, b.isEnabled);
+        // This message is a submessage and has not static message length defined
+    }
+
     function testUpdateVault(uint64 poolId, bytes16 scId, bytes32 vaultOrFactory, uint128 assetId, uint8 kind)
         public
         pure
