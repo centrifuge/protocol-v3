@@ -594,14 +594,19 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
 
     /// @inheritdoc IHubGatewayHandler
     function updateHoldingAmount(
+        uint16 centrifugeId,
         PoolId poolId,
         ShareClassId scId,
         AssetId assetId,
         uint128 amount,
         D18 pricePoolPerAsset,
-        bool isIncrease
+        bool isIncrease,
+        bool isSnapshot,
+        uint88 nonce
     ) external {
         _auth();
+
+        holdings.setSnapshot(poolId, scId, centrifugeId, isSnapshot, nonce);
 
         uint128 value = isIncrease
             ? holdings.increase(poolId, scId, assetId, pricePoolPerAsset, amount)
@@ -627,17 +632,20 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
     }
 
     /// @inheritdoc IHubGatewayHandler
-    function increaseShareIssuance(PoolId poolId, ShareClassId scId, uint128 amount) external {
+    function updateShares(
+        uint16 centrifugeId,
+        PoolId poolId,
+        ShareClassId scId,
+        uint128 amount,
+        bool isIssuance,
+        bool isSnapshot,
+        uint88 nonce
+    ) external {
         _auth();
 
-        shareClassManager.increaseShareClassIssuance(poolId, scId, amount);
-    }
+        holdings.setSnapshot(poolId, scId, centrifugeId, isSnapshot, nonce);
 
-    /// @inheritdoc IHubGatewayHandler
-    function decreaseShareIssuance(PoolId poolId, ShareClassId scId, uint128 amount) external {
-        _auth();
-
-        shareClassManager.decreaseShareClassIssuance(poolId, scId, amount);
+        shareClassManager.updateShares(centrifugeId, poolId, scId, amount, isIssuance);
     }
 
     //----------------------------------------------------------------------------------------------

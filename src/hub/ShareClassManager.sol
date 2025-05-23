@@ -41,6 +41,7 @@ contract ShareClassManager is Auth, IShareClassManager {
     mapping(ShareClassId scId => ShareClassMetrics) public metrics;
     mapping(ShareClassId scId => ShareClassMetadata) public metadata;
     mapping(PoolId poolId => mapping(ShareClassId => bool)) public shareClassIds;
+    mapping(ShareClassId scId => mapping(uint16 centrifugeId => uint128)) public issuance;
 
     // Epochs
     mapping(ShareClassId scId => mapping(AssetId assetId => EpochId)) public epochId;
@@ -250,7 +251,7 @@ contract ShareClassManager is Auth, IShareClassManager {
             MathLib.Rounding.Down
         ).toUint128();
 
-        metrics[scId_].totalIssuance += issuedShareAmount;
+        metrics[scId_].totalIssuance += issuedShareAmount; // TODO: remove
         epochAmounts.issuedAt = block.timestamp.toUint64();
         epochId[scId_][depositAssetId].issue = nowIssueEpochId;
 
@@ -289,7 +290,8 @@ contract ShareClassManager is Auth, IShareClassManager {
         require(epochAmounts.approvedShareAmount <= metrics[scId_].totalIssuance, RevokeMoreThanIssued());
 
         // NOTE: shares and pool currency have the same decimals - no conversion needed!
-        payoutPoolAmount = navPoolPerShare.mulUint128(epochAmounts.approvedShareAmount, MathLib.Rounding.Down);
+        payoutPoolAmount = navPoolPerShare.mulUint128(epochAmounts.approvedShareAmount, MathLib.Rounding.Down); // TODO:
+            // remove
 
         payoutAssetAmount = PricingLib.poolToAssetAmount(
             payoutPoolAmount,
@@ -300,7 +302,7 @@ contract ShareClassManager is Auth, IShareClassManager {
         ).toUint128();
         revokedShareAmount = epochAmounts.approvedShareAmount;
 
-        metrics[scId_].totalIssuance -= epochAmounts.approvedShareAmount;
+        metrics[scId_].totalIssuance -= epochAmounts.approvedShareAmount; // TODO: remove
         epochAmounts.payoutAssetAmount = payoutAssetAmount;
         epochAmounts.revokedAt = block.timestamp.toUint64();
         epochId[scId_][payoutAssetId].revoke = nowRevokeEpochId;
@@ -340,24 +342,19 @@ contract ShareClassManager is Auth, IShareClassManager {
     }
 
     /// @inheritdoc IShareClassManager
-    function increaseShareClassIssuance(PoolId poolId, ShareClassId scId_, uint128 amount) external auth {
+    function updateShares(uint16 centrifugeId, PoolId poolId, ShareClassId scId_, uint128 amount, bool isIssuance)
+        external
+        auth
+    {
         require(exists(poolId, scId_), ShareClassNotFound());
+        require(isIssuance || issuance[scId_][centrifugeId] >= amount, DecreaseMoreThanIssued());
 
-        uint128 newIssuance = metrics[scId_].totalIssuance + amount;
+        uint128 newIssuance = isIssuance ? metrics[scId_].totalIssuance + amount : metrics[scId_].totalIssuance - amount;
         metrics[scId_].totalIssuance = newIssuance;
+        issuance[scId_][centrifugeId] = newIssuance;
 
-        emit RemoteIssueShares(poolId, scId_, amount);
-    }
-
-    /// @inheritdoc IShareClassManager
-    function decreaseShareClassIssuance(PoolId poolId, ShareClassId scId_, uint128 amount) external auth {
-        require(exists(poolId, scId_), ShareClassNotFound());
-        require(metrics[scId_].totalIssuance >= amount, DecreaseMoreThanIssued());
-
-        uint128 newIssuance = metrics[scId_].totalIssuance - amount;
-        metrics[scId_].totalIssuance = newIssuance;
-
-        emit RemoteRevokeShares(poolId, scId_, amount);
+        if (isIssuance) emit RemoteIssueShares(centrifugeId, poolId, scId_, amount);
+        else emit RemoteRevokeShares(centrifugeId, poolId, scId_, amount);
     }
 
     //----------------------------------------------------------------------------------------------

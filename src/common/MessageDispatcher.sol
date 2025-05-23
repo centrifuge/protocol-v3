@@ -638,10 +638,14 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
         AssetId assetId,
         uint128 amount,
         D18 pricePoolPerAsset,
-        bool isIncrease
+        bool isIncrease,
+        bool isSnapshot,
+        uint88 nonce
     ) external auth {
         if (poolId.centrifugeId() == localCentrifugeId) {
-            hub.updateHoldingAmount(poolId, scId, assetId, amount, pricePoolPerAsset, isIncrease);
+            hub.updateHoldingAmount(
+                localCentrifugeId, poolId, scId, assetId, amount, pricePoolPerAsset, isIncrease, isSnapshot, nonce
+            );
         } else {
             gateway.send(
                 poolId.centrifugeId(),
@@ -652,20 +656,25 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
                     amount: amount,
                     pricePerUnit: pricePoolPerAsset.raw(),
                     timestamp: uint64(block.timestamp),
-                    isIncrease: isIncrease
+                    isIncrease: isIncrease,
+                    isSnapshot: isSnapshot,
+                    nonce: nonce
                 }).serialize()
             );
         }
     }
 
     /// @inheritdoc IVaultMessageSender
-    function sendUpdateShares(PoolId poolId, ShareClassId scId, uint128 shares, bool isIssuance) external auth {
+    function sendUpdateShares(
+        PoolId poolId,
+        ShareClassId scId,
+        uint128 shares,
+        bool isIssuance,
+        bool isSnapshot,
+        uint88 nonce
+    ) external auth {
         if (poolId.centrifugeId() == localCentrifugeId) {
-            if (isIssuance) {
-                hub.increaseShareIssuance(poolId, scId, shares);
-            } else {
-                hub.decreaseShareIssuance(poolId, scId, shares);
-            }
+            hub.updateShares(localCentrifugeId, poolId, scId, shares, isIssuance, isSnapshot, nonce);
         } else {
             gateway.send(
                 poolId.centrifugeId(),
@@ -674,7 +683,9 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
                     scId: scId.raw(),
                     shares: shares,
                     timestamp: uint64(block.timestamp),
-                    isIssuance: isIssuance
+                    isIssuance: isIssuance,
+                    isSnapshot: isSnapshot,
+                    nonce: nonce
                 }).serialize()
             );
         }
