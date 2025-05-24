@@ -49,6 +49,9 @@ interface IHub {
     event UpdateContract(
         uint16 indexed centrifugeId, PoolId indexed poolId, ShareClassId scId, bytes32 target, bytes payload
     );
+    event ForwardTransferShares(
+        uint16 indexed centrifugeId, PoolId indexed poolId, ShareClassId scId, bytes32 receiver, uint128 amount
+    );
 
     /// @notice Emitted when a call to `file()` was performed.
     event File(bytes32 what, address addr);
@@ -124,8 +127,13 @@ interface IHub {
         external
         payable;
 
-    /// @notice Allow/disallow an account to interact as pool manager
-    function updateManager(PoolId poolId, address who, bool canManage) external payable;
+    /// @notice Allow/disallow an account to interact as hub manager this pool
+    function updateHubManager(PoolId poolId, address who, bool canManage) external payable;
+
+    /// @notice Allow/disallow an account to interact as balance sheet manager for this pool
+    function updateBalanceSheetManager(uint16 centrifugeId, PoolId poolId, bytes32 who, bool canManage)
+        external
+        payable;
 
     /// @notice Add a new share class to the pool
     function addShareClass(PoolId poolId, string calldata name, string calldata symbol, bytes32 salt)
@@ -237,7 +245,7 @@ interface IHub {
     /// @param equityAccount Used to track the equity value
     /// @param gainAccount Used to track the gain value
     /// @param lossAccount Used to track the loss value
-    function createHolding(
+    function initializeHolding(
         PoolId poolId,
         ShareClassId scId,
         AssetId assetId,
@@ -254,7 +262,7 @@ interface IHub {
     /// @param valuation Used to transform between the holding asset and pool currency
     /// @param expenseAccount Used to track the expense value
     /// @param liabilityAccount Used to track the liability value
-    function createLiability(
+    function initializeLiability(
         PoolId poolId,
         ShareClassId scId,
         AssetId assetId,
