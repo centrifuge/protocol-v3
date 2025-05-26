@@ -1,13 +1,15 @@
+*.pem
 cache/
 out/
 broadcast/
-.env
+!.env.example
 .idea/
 .DS_Store
 .env.*
 lcov.info
 .vscode
 deployments/latest
+deployments/ci
 
 ## Recon
 /medusa
