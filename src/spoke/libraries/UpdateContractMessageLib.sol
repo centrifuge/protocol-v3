@@ -8,7 +8,9 @@ enum UpdateContractType {
     /// @dev Placeholder for null update restriction type
     Invalid,
     Valuation,
-    SyncDepositMaxReserve
+    SyncDepositMaxReserve,
+    LoanMaxBorrowAmount,
+    LoanRate
 }
 
 library UpdateContractMessageLib {
@@ -63,5 +65,51 @@ library UpdateContractMessageLib {
 
     function serialize(UpdateContractSyncDepositMaxReserve memory t) internal pure returns (bytes memory) {
         return abi.encodePacked(UpdateContractType.SyncDepositMaxReserve, t.assetId, t.maxReserve);
+    }
+
+    //---------------------------------------
+    //   UpdateContract.LoanMaxBorrowAmount (submsg)
+    //---------------------------------------
+
+    struct UpdateContractLoanMaxBorrowAmount {
+        uint128 assetId;
+        uint128 maxBorrowAmount;
+    }
+
+    function deserializeUpdateContractLoanMaxBorrowAmount(bytes memory data)
+        internal
+        pure
+        returns (UpdateContractLoanMaxBorrowAmount memory)
+    {
+        require(updateContractType(data) == UpdateContractType.LoanMaxBorrowAmount, UnknownMessageType());
+
+        return UpdateContractLoanMaxBorrowAmount({assetId: data.toUint128(1), maxBorrowAmount: data.toUint128(17)});
+    }
+
+    function serialize(UpdateContractLoanMaxBorrowAmount memory t) internal pure returns (bytes memory) {
+        return abi.encodePacked(UpdateContractType.LoanMaxBorrowAmount, t.assetId, t.maxBorrowAmount);
+    }
+
+    //---------------------------------------
+    //   UpdateContract.LoanRate (submsg)
+    //---------------------------------------
+
+    struct UpdateContractLoanRate {
+        uint128 assetId;
+        bytes32 rateId;
+    }
+
+    function deserializeUpdateContractLoanRate(bytes memory data)
+        internal
+        pure
+        returns (UpdateContractLoanRate memory)
+    {
+        require(updateContractType(data) == UpdateContractType.LoanRate, UnknownMessageType());
+
+        return UpdateContractLoanRate({assetId: data.toUint128(1), rateId: data.toBytes32(17)});
+    }
+
+    function serialize(UpdateContractLoanRate memory t) internal pure returns (bytes memory) {
+        return abi.encodePacked(UpdateContractType.LoanRate, t.assetId, t.rateId);
     }
 }
