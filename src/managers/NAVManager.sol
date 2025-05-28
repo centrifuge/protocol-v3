@@ -1,0 +1,109 @@
+// SPDX-License-Identifier: BUSL-1.1
+pragma solidity 0.8.28;
+
+import {Auth} from "src/misc/Auth.sol";
+import {D18, d18} from "src/misc/types/D18.sol";
+
+import {PoolId} from "src/common/types/PoolId.sol";
+import {AssetId} from "src/common/types/AssetId.sol";
+import {AccountId} from "src/common/types/AccountId.sol";
+import {ShareClassId} from "src/common/types/ShareClassId.sol";
+import {IValuation} from "src/common/interfaces/IValuation.sol";
+
+import {IHub} from "src/hub/interfaces/IHub.sol";
+import {IAccounting} from "src/hub/interfaces/IAccounting.sol";
+import {IShareClassManager} from "src/hub/interfaces/IShareClassManager.sol";
+
+contract NAVManager is Auth {
+    error InvalidShareClassCount();
+
+    PoolId public immutable poolId;
+    ShareClassId public immutable scId;
+
+    AccountId public immutable equityAccount;
+    AccountId public immutable liabilityAccount;
+    AccountId public immutable gainAccount;
+    AccountId public immutable lossAccount;
+
+    IHub public immutable hub;
+    IAccounting public immutable accounting;
+    IShareClassManager public immutable shareClassManager;
+
+    AccountId internal nextAccountId;
+
+    constructor(PoolId poolId_, ShareClassId scId_, IHub hub_, address deployer) Auth(deployer) {
+        require(hub.shareClassManager().shareClassCount(poolId_) == 1, InvalidShareClassCount());
+
+        poolId = poolId_;
+        scId = scId_;
+        hub = hub_;
+        accounting = hub.accounting();
+        shareClassManager = hub.shareClassManager();
+
+        equityAccount = AccountId.wrap(1);
+        liabilityAccount = AccountId.wrap(2);
+        gainAccount = AccountId.wrap(3);
+        lossAccount = AccountId.wrap(4);
+        hub.createAccount(poolId, equityAccount, false);
+        hub.createAccount(poolId, liabilityAccount, false);
+        hub.createAccount(poolId, gainAccount, false);
+        hub.createAccount(poolId, lossAccount, false);
+
+        nextAccountId = AccountId.wrap(5);
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // Account creation
+    //----------------------------------------------------------------------------------------------
+
+    // TODO: create equity/gain/loss/liability accounts per centrifugeId
+    // TODO: add ISnapshotHook.onSync
+
+    function initializeHolding(AssetId assetId, IValuation valuation) external auth {
+        hub.createAccount(poolId, nextAccountId, true);
+        hub.initializeHolding(poolId, scId, assetId, valuation, nextAccountId, equityAccount, gainAccount, lossAccount);
+        nextAccountId = nextAccountId.increment();
+    }
+
+    function initializeLiability(AssetId assetId, IValuation valuation) external auth {
+        hub.createAccount(poolId, nextAccountId, true);
+        hub.initializeLiability(poolId, scId, assetId, valuation, nextAccountId, liabilityAccount);
+        nextAccountId = nextAccountId.increment();
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // Price updates
+    //----------------------------------------------------------------------------------------------
+
+    function updateHoldingValue(AssetId assetId) external {
+        hub.updateHoldingValue(poolId, scId, assetId);
+    }
+
+    function updatePricePerShare() external {
+        (D18 current,) = navPoolPerShare();
+        hub.updateSharePrice(poolId, scId, current);
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // Calculations
+    //----------------------------------------------------------------------------------------------
+
+    /// @dev NAV = equity + gain - loss - liability
+    function netAssetValue() public view returns (D18) {
+        // TODO: how to handle when one of the accounts is not positive
+        (, uint128 equity) = accounting.accountValue(poolId, equityAccount);
+        (, uint128 gain) = accounting.accountValue(poolId, gainAccount);
+        (, uint128 loss) = accounting.accountValue(poolId, lossAccount);
+        (, uint128 liability) = accounting.accountValue(poolId, liabilityAccount);
+        return d18(equity) + d18(gain) - d18(loss) - d18(liability);
+    }
+
+    /// @dev Price = NAV / share class issuance
+    function navPoolPerShare() public view returns (D18 current, D18 stored) {
+        D18 nav = netAssetValue();
+        (uint128 issuance, D18 prev) = shareClassManager.metrics(scId);
+
+        current = nav / d18(issuance);
+        stored = prev;
+    }
+}
