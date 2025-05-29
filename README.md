@@ -84,4 +84,4 @@ forge test
 | [Alex the Entreprenerd](https://x.com/gallodasballo)                     | Apr 2025        | Review + invariant testing            | [`Report`](https://github.com/Recon-Fuzz/audits/blob/main/Centrifuge_Protocol_V3.MD)                                                                             |
 
 ## License
-The primary license is the [Business Source License 1.1](https://github.com/centrifuge/protocol-v3/blob/main/LICENSE). However, all files in the [`src/misc`](./src/misc) folder can also be licensed under `GPL-2.0-or-later` (as indicated in their SPDX headers).
+The primary license is the [Business Source License 1.1](https://github.com/centrifuge/protocol-v3/blob/main/LICENSE). However, all files in the [`src/misc`](./src/misc) folder can also be licensed under `GPL-2.0-or-later` (as indicated in their SPDX headers), as well as [`src/managers/MerkleProofManager.sol`](./src/managers/MerkleProofManager.sol).
