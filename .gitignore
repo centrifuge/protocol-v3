@@ -1,13 +1,13 @@
 cache/
 out/
 broadcast/
-.env
+.env.*
 .idea/
 .DS_Store
 .env.*
 lcov.info
 .vscode
-deployments/latest
+**/latest
 
 ## Recon
 /medusa
@@ -17,3 +17,6 @@ deployments/latest
 ## Recon Separate Configs
 /medusa-core
 /medusa-aggregator
+
+## Deployment
+/script/adapters/**
