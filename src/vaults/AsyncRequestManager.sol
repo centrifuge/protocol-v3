@@ -315,7 +315,7 @@ contract AsyncRequestManager is BaseRequestManager, IAsyncRequestManager {
         state.maxMint = state.maxMint > sharesUp ? state.maxMint - sharesUp : 0;
 
         if (sharesDown > 0) {
-            globalEscrow.authTransferTo(vault_.share(), receiver, sharesDown);
+            globalEscrow.authTransferTo(vault_.share(), 0, receiver, sharesDown);
         }
     }
 
@@ -420,7 +420,7 @@ contract AsyncRequestManager is BaseRequestManager, IAsyncRequestManager {
         state.claimableCancelRedeemRequest = 0;
 
         if (shares > 0) {
-            globalEscrow.authTransferTo(vault_.share(), receiver, shares);
+            globalEscrow.authTransferTo(vault_.share(), 0, receiver, shares);
         }
     }
 
