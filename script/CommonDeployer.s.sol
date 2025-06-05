@@ -23,8 +23,8 @@ string constant MAX_BATCH_SIZE_ENV = "MAX_BATCH_SIZE";
 abstract contract CommonDeployer is Script, JsonRegistry {
     uint256 constant DELAY = 48 hours;
     bytes32 immutable SALT;
-    uint128 constant FALLBACK_MSG_COST = uint128(0.02 ether); // in Weight
-    uint128 constant FALLBACK_MAX_BATCH_SIZE = uint128(10_000_000 ether); // 10M in Weight
+    uint128 constant FALLBACK_MSG_COST = uint128(1_000_000); // in GAS
+    uint128 constant FALLBACK_MAX_BATCH_SIZE = uint128(10_000_000); // 10M in Weight
 
     IAdapter[] adapters;
 
@@ -41,12 +41,10 @@ abstract contract CommonDeployer is Script, JsonRegistry {
     constructor() {
         // If no salt is provided, a pseudo-random salt is generated,
         // thus effectively making the deployment non-deterministic
-        SALT = vm.envOr(
-            "DEPLOYMENT_SALT", keccak256(abi.encodePacked(string(abi.encodePacked(blockhash(block.number - 1)))))
-        );
+        SALT = vm.envOr("DEPLOYMENT_SALT", keccak256(abi.encodePacked(string(abi.encodePacked(block.timestamp)))));
     }
 
-    function deployCommon(uint16 centrifugeId, ISafe adminSafe_, address deployer, bool isTests) public {
+    function deployCommon(uint16 centrifugeId_, ISafe adminSafe_, address deployer, bool isTests) public {
         if (address(root) != address(0)) {
             return; // Already deployed. Make this method idempotent.
         }
@@ -63,9 +61,9 @@ abstract contract CommonDeployer is Script, JsonRegistry {
 
         gasService = new GasService(maxBatchSize, messageGasLimit);
         gateway = new Gateway(root, gasService, deployer);
-        multiAdapter = new MultiAdapter(centrifugeId, gateway, deployer);
+        multiAdapter = new MultiAdapter(centrifugeId_, gateway, deployer);
 
-        messageDispatcher = new MessageDispatcher(centrifugeId, root, gateway, tokenRecoverer, deployer);
+        messageDispatcher = new MessageDispatcher(centrifugeId_, root, gateway, tokenRecoverer, deployer);
 
         adminSafe = adminSafe_;
 
@@ -111,10 +109,12 @@ abstract contract CommonDeployer is Script, JsonRegistry {
         gateway.file("processor", address(messageProcessor));
         gateway.file("adapter", address(multiAdapter));
     }
+    // The centrifugeId_ here has to be the destination centrifuge_chain_id
+    // Use WireAdapters.s.sol for automatic wiring of live multi-chains adapters
 
-    function wire(uint16 centrifugeId, IAdapter adapter, address deployer) public {
+    function wire(uint16 centrifugeId_, IAdapter adapter, address deployer) public {
         adapters.push(adapter);
-        multiAdapter.file("adapters", centrifugeId, adapters);
+        multiAdapter.file("adapters", centrifugeId_, adapters);
         IAuth(address(adapter)).rely(address(root));
         IAuth(address(adapter)).deny(deployer);
     }
