@@ -1,0 +1,43 @@
+{
+  "network": {
+    "chainId": 11155111,
+    "environment": "testnet",
+    "centrifugeId": 1,
+    "network": "ethereum",
+    "etherscanUrl": "https://api-sepolia.etherscan.io/api",
+    "connectsTo": [
+      "arbitrum-sepolia",
+      "base-sepolia"
+    ]
+  },
+  "adapters": {},
+  "contracts": {
+    "root": "0x3d573E796b6Cf0D7E2fb4BE41876c8322f7f9CC4",
+    "guardian": "0x63c3eDFcCA59cCE56bD5393c8441AE7a21E1ae69",
+    "gasService": "0xFc84A8c6869Ac28c33c77DA10ED99cD48CDc8E9e",
+    "gateway": "0x089Ba611C223AefaB77c198dAA06686e7D1bEfB6",
+    "multiAdapter": "0x1C337350378fbCD26F2b9f34A903C316419611a4",
+    "messageProcessor": "0x6f65d1ed8240C45ea1DD28738B0a07d3B94fD6d6",
+    "messageDispatcher": "0x83A9e7aDC29b6cd0CF45211F99447166938630e1",
+    "hubRegistry": "0x6324E6Bc776d1245C66c9CD496C87B53c19Cb074",
+    "accounting": "0x69fCa970ecEd78afc90e4B9ad9098D76dA89E190",
+    "holdings": "0x1AE33f349291Dedc432DDb634b01965d67592372",
+    "shareClassManager": "0x670A3983e737e62a7D27b9D56c35F8c92eA457C8",
+    "hub": "0xEcBE6c1FD287f425e40507483CD465eb5106BE11",
+    "identityValuation": "0xd39A8D8fFf774E53BD48736AFA9c317b8f5d18e2",
+    "poolEscrowFactory": "0x34b900eEc652aa7Ee8D27Bf66291f5c1F4fAd852",
+    "routerEscrow": "0x7A76A9bef561128455eE347E70E406fE2C18492d",
+    "globalEscrow": "0xAF8FC478a9E4625b3343C8F2B880f308073fFEBe",
+    "freezeOnlyHook": "0x95ba9FDd09905cA68682E9CD594144458cb07f34",
+    "redemptionRestrictionsHook": "0xc2b132d36B37345EFB5BdC92ae076A67CF80ca13",
+    "fullRestrictionsHook": "0x92219a0dc18066B88c46cAEB0cc271a85Df33ca9",
+    "tokenFactory": "0x3834290Ff7675E726A2377b689aaAEdC5e625502",
+    "asyncRequestManager": "0xFd7711358d63c75633Cd200cCCeaA1bFd95e9c72",
+    "syncRequestManager": "0x12733C2e0f39c2620Cc12E0F9d73fbF3D5c6782a",
+    "asyncVaultFactory": "0x92E6818da7F1261Fa3f2f9aBCd836f151eCdCF28",
+    "syncDepositVaultFactory": "0x39fA3Ba89f2727A8DeA47B08246ec2900f8bcC61",
+    "spoke": "0x16148152c265dDc2264F0AB7b83B446D913293c5",
+    "vaultRouter": "0x35Ac419be06de7C8025BcE5E331a68F47035E6bA",
+    "balanceSheet": "0x4AB17317587A8d0B1301DC57a9C42462ce9E5dC3"
+  }
+}
