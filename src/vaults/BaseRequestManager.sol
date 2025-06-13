@@ -5,18 +5,19 @@ import {Auth} from "src/misc/Auth.sol";
 import {MathLib} from "src/misc/libraries/MathLib.sol";
 import {D18} from "src/misc/types/D18.sol";
 import {Recoverable} from "src/misc/Recoverable.sol";
+import {IEscrow} from "src/misc/interfaces/IEscrow.sol";
 
 import {AssetId} from "src/common/types/AssetId.sol";
 import {PoolId} from "src/common/types/PoolId.sol";
 import {ShareClassId} from "src/common/types/ShareClassId.sol";
 import {PricingLib} from "src/common/libraries/PricingLib.sol";
 import {ShareClassId} from "src/common/types/ShareClassId.sol";
+import {IPoolEscrow} from "src/common/interfaces/IPoolEscrow.sol";
 
+import {IBalanceSheet} from "src/spoke/interfaces/IBalanceSheet.sol";
 import {ISpoke, VaultDetails} from "src/spoke/interfaces/ISpoke.sol";
 import {IBaseRequestManager} from "src/vaults/interfaces/IBaseRequestManager.sol";
-import {IPoolEscrowProvider} from "src/spoke/factories/interfaces/IPoolEscrowFactory.sol";
 import {IBaseVault} from "src/vaults/interfaces/IBaseVault.sol";
-import {IPoolEscrow, IEscrow} from "src/spoke/interfaces/IEscrow.sol";
 import {IVault} from "src/spoke/interfaces/IVaultManager.sol";
 import {IVaultManager} from "src/spoke/interfaces/IVaultManager.sol";
 
@@ -27,7 +28,7 @@ abstract contract BaseRequestManager is Auth, Recoverable, IBaseRequestManager {
     IEscrow public immutable globalEscrow;
 
     ISpoke public spoke;
-    IPoolEscrowProvider public poolEscrowProvider;
+    IBalanceSheet public balanceSheet;
 
     mapping(PoolId poolId => mapping(ShareClassId scId => mapping(AssetId assetId => IBaseVault vault))) public vault;
 
@@ -43,7 +44,7 @@ abstract contract BaseRequestManager is Auth, Recoverable, IBaseRequestManager {
     /// @inheritdoc IBaseRequestManager
     function file(bytes32 what, address data) external virtual auth {
         if (what == "spoke") spoke = ISpoke(data);
-        else if (what == "poolEscrowProvider") poolEscrowProvider = IPoolEscrowProvider(data);
+        else if (what == "balanceSheet") balanceSheet = IBalanceSheet(data);
         else revert FileUnrecognizedParam();
         emit File(what, data);
     }
@@ -59,6 +60,8 @@ abstract contract BaseRequestManager is Auth, Recoverable, IBaseRequestManager {
 
         vault[poolId][scId][assetId] = IBaseVault(address(vault_));
         rely(address(vault_));
+
+        emit AddVault(poolId, scId, assetId, vault_);
     }
 
     /// @inheritdoc IVaultManager
@@ -72,6 +75,8 @@ abstract contract BaseRequestManager is Auth, Recoverable, IBaseRequestManager {
 
         delete vault[poolId][scId][assetId];
         deny(address(vault_));
+
+        emit RemoveVault(poolId, scId, assetId, vault_);
     }
 
     //----------------------------------------------------------------------------------------------
@@ -114,7 +119,7 @@ abstract contract BaseRequestManager is Auth, Recoverable, IBaseRequestManager {
 
     /// @inheritdoc IBaseRequestManager
     function poolEscrow(PoolId poolId) public view returns (IPoolEscrow) {
-        return poolEscrowProvider.escrow(poolId);
+        return balanceSheet.escrow(poolId);
     }
 
     /// @inheritdoc IVaultManager
@@ -130,15 +135,17 @@ abstract contract BaseRequestManager is Auth, Recoverable, IBaseRequestManager {
         D18 pricePoolPerShare,
         MathLib.Rounding rounding
     ) internal view returns (uint256 shares) {
-        return PricingLib.assetToShareAmount(
-            vault_.share(),
-            vaultDetails.asset,
-            vaultDetails.tokenId,
-            assets.toUint128(),
-            pricePoolPerAsset,
-            pricePoolPerShare,
-            rounding
-        );
+        return pricePoolPerShare.isZero()
+            ? 0
+            : PricingLib.assetToShareAmount(
+                vault_.share(),
+                vaultDetails.asset,
+                vaultDetails.tokenId,
+                assets.toUint128(),
+                pricePoolPerAsset,
+                pricePoolPerShare,
+                rounding
+            );
     }
 
     function _shareToAssetAmount(
@@ -149,14 +156,16 @@ abstract contract BaseRequestManager is Auth, Recoverable, IBaseRequestManager {
         D18 pricePoolPerShare,
         MathLib.Rounding rounding
     ) internal view returns (uint256 assets) {
-        return PricingLib.shareToAssetAmount(
-            vault_.share(),
-            shares.toUint128(),
-            vaultDetails.asset,
-            vaultDetails.tokenId,
-            pricePoolPerAsset,
-            pricePoolPerShare,
-            rounding
-        );
+        return pricePoolPerAsset.isZero()
+            ? 0
+            : PricingLib.shareToAssetAmount(
+                vault_.share(),
+                shares.toUint128(),
+                vaultDetails.asset,
+                vaultDetails.tokenId,
+                pricePoolPerShare,
+                pricePoolPerAsset,
+                rounding
+            );
     }
 }

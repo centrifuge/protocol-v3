@@ -37,14 +37,10 @@ contract SyncDepositTestHelper is BaseTest {
         syncVault = SyncDepositVault(syncVault_);
 
         centrifugeChain.updatePricePoolPerShare(
-            syncVault.poolId().raw(), syncVault.scId().raw(), pricePoolPerShare.inner(), uint64(block.timestamp)
+            syncVault.poolId().raw(), syncVault.scId().raw(), pricePoolPerShare.raw(), uint64(block.timestamp)
         );
         centrifugeChain.updatePricePoolPerAsset(
-            syncVault.poolId().raw(),
-            syncVault.scId().raw(),
-            assetId,
-            pricePoolPerAsset.inner(),
-            uint64(block.timestamp)
+            syncVault.poolId().raw(), syncVault.scId().raw(), assetId, pricePoolPerAsset.raw(), uint64(block.timestamp)
         );
     }
 
@@ -60,7 +56,7 @@ contract SyncDepositTestHelper is BaseTest {
         emit IBalanceSheet.Issue(poolId, scId, self, pricePoolPerShare, shares);
 
         vm.expectEmit();
-        emit IBalanceSheet.Deposit(
+        emit IBalanceSheet.NoteDeposit(
             poolId, scId, vault.asset(), vaultDetails.tokenId, depositAssetAmount, pricePoolPerAsset
         );
     }
@@ -180,21 +176,10 @@ contract SyncDepositTest is SyncDepositTestHelper {
         );
 
         if (snap) {
-            vm.startSnapshotGas("SyncDepositVault", "deposit_withoutQueue");
+            vm.startSnapshotGas("SyncDepositVault", "deposit");
         }
         // _assertDepositEvents(syncVault, shares.toUint128(), pricePoolPerShare, pricePoolPerAsset);
-        syncVault.deposit(amount / 2, self);
-        if (snap) {
-            vm.stopSnapshotGas();
-        }
-
-        balanceSheet.setQueue(syncVault.poolId(), syncVault.scId(), true);
-
-        if (snap) {
-            vm.startSnapshotGas("SyncDepositVault", "deposit_withQueue");
-        }
-        // _assertDepositEvents(syncVault, shares.toUint128(), pricePoolPerShare, pricePoolPerAsset);
-        syncVault.deposit(amount / 2, self);
+        syncVault.deposit(amount, self);
         if (snap) {
             vm.stopSnapshotGas();
         }

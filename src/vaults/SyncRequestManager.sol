@@ -24,8 +24,7 @@ import {ISyncRequestManager, Prices, ISyncDepositValuation} from "src/vaults/int
 import {IDepositManager} from "src/vaults/interfaces/IVaultManagers.sol";
 import {ISyncDepositManager} from "src/vaults/interfaces/IVaultManagers.sol";
 import {IUpdateContract} from "src/spoke/interfaces/IUpdateContract.sol";
-import {IEscrow} from "src/spoke/interfaces/IEscrow.sol";
-import {IPoolEscrowProvider} from "src/spoke/factories/interfaces/IPoolEscrowFactory.sol";
+import {IEscrow} from "src/misc/interfaces/IEscrow.sol";
 import {IAsyncRedeemManager} from "src/vaults/interfaces/IVaultManagers.sol";
 import {IVault} from "src/spoke/interfaces/IVaultManager.sol";
 import {IVaultManager} from "src/spoke/interfaces/IVaultManager.sol";
@@ -38,8 +37,6 @@ contract SyncRequestManager is BaseRequestManager, ISyncRequestManager {
     using CastLib for *;
     using UpdateContractMessageLib for *;
     using BytesLib for bytes;
-
-    IBalanceSheet public balanceSheet;
 
     mapping(PoolId => mapping(ShareClassId scId => ISyncDepositValuation)) public valuation;
     mapping(PoolId => mapping(ShareClassId scId => mapping(address asset => mapping(uint256 tokenId => uint128))))
@@ -57,7 +54,6 @@ contract SyncRequestManager is BaseRequestManager, ISyncRequestManager {
     function file(bytes32 what, address data) external override(IBaseRequestManager, BaseRequestManager) auth {
         if (what == "spoke") spoke = ISpoke(data);
         else if (what == "balanceSheet") balanceSheet = IBalanceSheet(data);
-        else if (what == "poolEscrowProvider") poolEscrowProvider = IPoolEscrowProvider(data);
         else revert FileUnrecognizedParam();
         emit File(what, data);
     }
@@ -216,11 +212,12 @@ contract SyncRequestManager is BaseRequestManager, ISyncRequestManager {
         returns (uint256 shares)
     {
         VaultDetails memory vaultDetails = spoke.vaultDetails(vault_);
-        Prices memory prices_ = prices(vault_.poolId(), vault_.scId(), vaultDetails.assetId);
 
-        return super._assetToShareAmount(
-            vault_, vaultDetails, assets, prices_.poolPerAsset, prices_.poolPerShare, MathLib.Rounding.Down
-        );
+        D18 poolPerShare = pricePoolPerShare(vault_.poolId(), vault_.scId());
+        D18 poolPerAsset = spoke.pricePoolPerAsset(vault_.poolId(), vault_.scId(), vaultDetails.assetId, true);
+
+        return
+            super._assetToShareAmount(vault_, vaultDetails, assets, poolPerAsset, poolPerShare, MathLib.Rounding.Down);
     }
 
     /// @inheritdoc IBaseRequestManager
@@ -242,13 +239,6 @@ contract SyncRequestManager is BaseRequestManager, ISyncRequestManager {
         } else {
             price = valuation_.pricePoolPerShare(poolId, scId);
         }
-    }
-
-    /// @inheritdoc ISyncRequestManager
-    function prices(PoolId poolId, ShareClassId scId, AssetId assetId) public view returns (Prices memory priceData) {
-        priceData.poolPerShare = pricePoolPerShare(poolId, scId);
-        priceData.poolPerAsset = spoke.pricePoolPerAsset(poolId, scId, assetId, true);
-        priceData.assetPerShare = PricingLib.priceAssetPerShare(priceData.poolPerShare, priceData.poolPerAsset);
     }
 
     //----------------------------------------------------------------------------------------------
@@ -278,7 +268,7 @@ contract SyncRequestManager is BaseRequestManager, ISyncRequestManager {
     {
         if (!spoke.isLinked(vault_)) return 0;
 
-        uint128 availableBalance = poolEscrowProvider.escrow(poolId).availableBalanceOf(scId, asset, tokenId);
+        uint128 availableBalance = balanceSheet.availableBalanceOf(poolId, scId, asset, tokenId);
         uint128 maxReserve_ = maxReserve[poolId][scId][asset][tokenId];
 
         if (maxReserve_ < availableBalance) {
@@ -294,9 +284,10 @@ contract SyncRequestManager is BaseRequestManager, ISyncRequestManager {
         returns (uint256 shares)
     {
         VaultDetails memory vaultDetails = spoke.vaultDetails(vault_);
-        Prices memory prices_ = prices(vault_.poolId(), vault_.scId(), vaultDetails.assetId);
-        return super._shareToAssetAmount(
-            vault_, vaultDetails, assets, prices_.poolPerAsset, prices_.poolPerShare, rounding
-        );
+
+        D18 poolPerShare = pricePoolPerShare(vault_.poolId(), vault_.scId());
+        D18 poolPerAsset = spoke.pricePoolPerAsset(vault_.poolId(), vault_.scId(), vaultDetails.assetId, true);
+
+        return super._shareToAssetAmount(vault_, vaultDetails, assets, poolPerAsset, poolPerShare, rounding);
     }
 }

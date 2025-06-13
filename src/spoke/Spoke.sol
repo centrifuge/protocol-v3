@@ -20,17 +20,17 @@ import {ISpokeMessageSender} from "src/common/interfaces/IGatewaySenders.sol";
 import {newAssetId, AssetId} from "src/common/types/AssetId.sol";
 import {PoolId} from "src/common/types/PoolId.sol";
 import {ShareClassId} from "src/common/types/ShareClassId.sol";
+import {IPoolEscrow} from "src/common/interfaces/IPoolEscrow.sol";
+import {IPoolEscrowFactory} from "src/common/factories/interfaces/IPoolEscrowFactory.sol";
+import {ITransferHook} from "src/common/interfaces/ITransferHook.sol";
 
 import {IVaultFactory} from "src/spoke/factories/interfaces/IVaultFactory.sol";
 import {IVault} from "src/spoke/interfaces/IVault.sol";
 import {ITokenFactory} from "src/spoke/factories/interfaces/ITokenFactory.sol";
 import {IShareToken} from "src/spoke/interfaces/IShareToken.sol";
-import {IPoolEscrowFactory} from "src/spoke/factories/interfaces/IPoolEscrowFactory.sol";
 import {IUpdateContract} from "src/spoke/interfaces/IUpdateContract.sol";
-import {ITransferHook} from "src/common/interfaces/ITransferHook.sol";
 import {AssetIdKey, Pool, ShareClassDetails, VaultDetails, ISpoke} from "src/spoke/interfaces/ISpoke.sol";
 import {Price} from "src/spoke/types/Price.sol";
-import {IPoolEscrow} from "src/spoke/interfaces/IEscrow.sol";
 import {IVaultManager} from "src/spoke/interfaces/IVaultManager.sol";
 
 /// @title  Spoke
@@ -142,16 +142,16 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
         }
 
         assetId = _assetToId[asset][tokenId];
-        if (assetId.raw() == 0) {
+        bool isInitialization = assetId.raw() == 0;
+        if (isInitialization) {
             _assetCounter++;
             assetId = newAssetId(sender.localCentrifugeId(), _assetCounter);
 
             _idToAsset[assetId] = AssetIdKey(asset, tokenId);
             _assetToId[asset][tokenId] = assetId;
-
-            emit RegisterAsset(assetId, asset, tokenId, name, symbol, decimals);
         }
 
+        emit RegisterAsset(assetId, asset, tokenId, name, symbol, decimals, isInitialization);
         sender.sendRegisterAsset(centrifugeId, assetId, decimals);
     }
 
@@ -165,8 +165,11 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
         require(pool.createdAt == 0, PoolAlreadyAdded());
         pool.createdAt = block.timestamp;
 
-        IPoolEscrow escrow = poolEscrowFactory.newEscrow(poolId);
-        gateway.setRefundAddress(PoolId.wrap(poolId.raw()), escrow);
+        IPoolEscrow escrow = poolEscrowFactory.escrow(poolId);
+        if (address(escrow).code.length == 0) {
+            poolEscrowFactory.newEscrow(poolId);
+            gateway.setRefundAddress(poolId, escrow);
+        }
 
         emit AddPool(poolId);
     }
@@ -241,6 +244,7 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
     function executeTransferShares(PoolId poolId, ShareClassId scId, bytes32 receiver, uint128 amount) public auth {
         IShareToken shareToken_ = shareToken(poolId, scId);
         shareToken_.mint(receiver.toAddress(), amount);
+        emit ExecuteTransferShares(poolId, scId, receiver.toAddress(), amount);
     }
 
     //----------------------------------------------------------------------------------------------
@@ -258,7 +262,7 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
         }
 
         shareClass.pricePoolPerShare = Price(price, computedAt, shareClass.pricePoolPerShare.maxAge);
-        emit PriceUpdate(poolId, scId, price, computedAt);
+        emit UpdateSharePrice(poolId, scId, price, computedAt);
     }
 
     /// @inheritdoc ISpokeGatewayHandler
@@ -281,7 +285,7 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
 
         poolPerAsset.price = poolPerAsset_;
         poolPerAsset.computedAt = computedAt;
-        emit PriceUpdate(poolId, scId, asset, tokenId, poolPerAsset_, computedAt);
+        emit UpdateAssetPrice(poolId, scId, asset, tokenId, poolPerAsset_, computedAt);
     }
 
     function setMaxSharePriceAge(PoolId poolId, ShareClassId scId, uint64 maxPriceAge) external auth {
@@ -337,7 +341,7 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
         require(vaultFactory[factory], InvalidFactory());
 
         AssetIdKey memory assetIdKey = _idToAsset[assetId];
-        IVault vault = IVaultFactory(factory).newVault(
+        IVault vault = factory.newVault(
             poolId, scId, assetIdKey.asset, assetIdKey.tokenId, shareClass.shareToken, new address[](0)
         );
         registerVault(poolId, scId, assetId, assetIdKey.asset, assetIdKey.tokenId, factory, vault);
@@ -368,7 +372,6 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
         manager.addVault(poolId, scId, assetId, vault, assetIdKey.asset, assetIdKey.tokenId);
 
         _vaultDetails[vault].isLinked = true;
-        IAuth(address(shareClass.shareToken)).rely(address(vault));
 
         if (assetIdKey.tokenId == 0) {
             shareClass.shareToken.updateVault(assetIdKey.asset, address(vault));
@@ -386,7 +389,6 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
         manager.removeVault(poolId, scId, assetId, vault, assetIdKey.asset, assetIdKey.tokenId);
 
         _vaultDetails[vault].isLinked = false;
-        IAuth(address(shareClass.shareToken)).deny(address(vault));
 
         if (assetIdKey.tokenId == 0) {
             shareClass.shareToken.updateVault(assetIdKey.asset, address(0));
