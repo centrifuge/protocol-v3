@@ -19,7 +19,7 @@ import {D18} from "src/misc/types/D18.sol";
 import {IBaseVault} from "src/vaults/interfaces/IBaseVault.sol";
 import {IShareToken} from "src/spoke/interfaces/IShareToken.sol";
 import {IValuation} from "src/common/interfaces/IValuation.sol";
-import {PoolEscrow} from "src/spoke/Escrow.sol";
+import {PoolEscrow} from "src/common/PoolEscrow.sol";
 
 // Component
 import {ShareTokenTargets} from "./targets/ShareTokenTargets.sol";
@@ -149,6 +149,18 @@ abstract contract TargetFunctions is
         spoke_linkVault(_getVault());
 
         asyncRequestManager.rely(address(_getVault()));
+
+        if (!isAsyncVault) {
+            // Set max reserve for sync vaults to maximum value to allow unlimited deposits
+            (address asset, uint256 tokenId) = spoke.idToAsset(AssetId.wrap(_getAssetId()));
+            syncManager.setMaxReserve(
+                PoolId.wrap(_getPool()), 
+                ShareClassId.wrap(_getShareClassId()), 
+                asset, 
+                tokenId,
+                type(uint128).max
+            );
+        }
 
         // 6. approve and mint initial amount of underlying asset to all actors
         address[] memory approvals = new address[](3);

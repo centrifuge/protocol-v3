@@ -4,11 +4,11 @@ pragma solidity ^0.8.0;
 import {IRoot} from "src/common/interfaces/IRoot.sol";
 import {IGateway} from "src/common/interfaces/IGateway.sol";
 import {
-    IRequestManagerGatewayHandler,
     ISpokeGatewayHandler,
     IBalanceSheetGatewayHandler,
     IHubGatewayHandler
 } from "src/common/interfaces/IGatewayHandlers.sol";
+import {IAsyncRequestManager} from "src/vaults/interfaces/IVaultManagers.sol";
 import {ITokenRecoverer} from "src/common/interfaces/ITokenRecoverer.sol";
 
 import {CastLib} from "src/misc/libraries/CastLib.sol";
@@ -17,11 +17,15 @@ import {ShareClassId} from "src/common/types/ShareClassId.sol";
 import {AssetId} from "src/common/types/AssetId.sol";
 import {D18} from "src/misc/types/D18.sol";
 import {MessageLib, VaultUpdateKind} from "src/common/libraries/MessageLib.sol";
+import {RequestMessageLib} from "src/common/libraries/RequestMessageLib.sol";
+import {RequestCallbackMessageLib} from "src/common/libraries/RequestCallbackMessageLib.sol";
 import {MathLib} from "src/misc/libraries/MathLib.sol";
 
 contract MockMessageDispatcher {
     using CastLib for *;
     using MathLib for uint256;
+    using RequestMessageLib for *;
+    using RequestCallbackMessageLib for *;
 
     IRoot public root;
     IGateway public gateway;
@@ -31,13 +35,13 @@ contract MockMessageDispatcher {
 
     IHubGatewayHandler public hub;
     ISpokeGatewayHandler public spoke;
-    IRequestManagerGatewayHandler public investmentManager;
+    IAsyncRequestManager public requestManager;
     IBalanceSheetGatewayHandler public balanceSheet;
 
     function file(bytes32 what, address data) external {
         if (what == "hub") hub = IHubGatewayHandler(data);
         else if (what == "spoke") spoke = ISpokeGatewayHandler(data);
-        else if (what == "investmentManager") investmentManager = IRequestManagerGatewayHandler(data);
+        else if (what == "requestManager") requestManager = IAsyncRequestManager(data);
         else if (what == "balanceSheet") balanceSheet = IBalanceSheetGatewayHandler(data);
     }
 
@@ -93,15 +97,10 @@ contract MockMessageDispatcher {
         uint128 fulfilledShareAmount,
         uint128 cancelledAssetAmount
     ) external {
-        investmentManager.fulfillDepositRequest(
-            poolId,
-            scId,
-            investor.toAddress(),
-            assetId,
-            fulfilledAssetAmount,
-            fulfilledShareAmount,
-            cancelledAssetAmount
-        );
+        bytes memory payload = RequestCallbackMessageLib.FulfilledDepositRequest(
+            investor, fulfilledAssetAmount, fulfilledShareAmount, cancelledAssetAmount
+        ).serialize();
+        spoke.requestCallback(poolId, scId, assetId, payload);
     }
 
     function sendFulfilledRedeemRequest(
@@ -113,15 +112,10 @@ contract MockMessageDispatcher {
         uint128 fulfilledShareAmount,
         uint128 cancelledShareAmount
     ) external {
-        investmentManager.fulfillRedeemRequest(
-            poolId,
-            scId,
-            investor.toAddress(),
-            assetId,
-            fulfilledAssetAmount,
-            fulfilledShareAmount,
-            cancelledShareAmount
-        );
+        bytes memory payload = RequestCallbackMessageLib.FulfilledRedeemRequest(
+            investor, fulfilledAssetAmount, fulfilledShareAmount, cancelledShareAmount
+        ).serialize();
+        spoke.requestCallback(poolId, scId, assetId, payload);
     }
 
     function sendUpdateRestriction(uint16 centrifugeId, PoolId poolId, ShareClassId scId, bytes calldata payload)
@@ -161,7 +155,9 @@ contract MockMessageDispatcher {
         uint128 assetAmount,
         D18 pricePoolPerAsset
     ) external {
-        investmentManager.approvedDeposits(poolId, scId, assetId, assetAmount, pricePoolPerAsset);
+        bytes memory payload =
+            RequestCallbackMessageLib.ApprovedDeposits(assetAmount, pricePoolPerAsset.raw()).serialize();
+        spoke.requestCallback(poolId, scId, assetId, payload);
     }
 
     function sendIssuedShares(
@@ -171,7 +167,8 @@ contract MockMessageDispatcher {
         uint128 shareAmount,
         D18 pricePoolPerShare
     ) external {
-        investmentManager.issuedShares(poolId, scId, shareAmount, pricePoolPerShare);
+        bytes memory payload = RequestCallbackMessageLib.IssuedShares(shareAmount, pricePoolPerShare.raw()).serialize();
+        spoke.requestCallback(poolId, scId, assetId, payload);
     }
 
     function sendRevokedShares(
@@ -182,11 +179,9 @@ contract MockMessageDispatcher {
         uint128 shareAmount,
         D18 pricePoolPerShare
     ) external {
-        investmentManager.revokedShares(poolId, scId, assetId, assetAmount, shareAmount, pricePoolPerShare);
-    }
-
-    function sendSetQueue(PoolId poolId, ShareClassId scId, bool enabled) external {
-        balanceSheet.setQueue(poolId, scId, enabled);
+        bytes memory payload =
+            RequestCallbackMessageLib.RevokedShares(assetAmount, shareAmount, pricePoolPerShare.raw()).serialize();
+        spoke.requestCallback(poolId, scId, assetId, payload);
     }
 
     function sendMaxAssetPriceAge(PoolId poolId, ShareClassId scId, AssetId assetId, uint64 maxPriceAge) external {
@@ -212,9 +207,7 @@ contract MockMessageDispatcher {
         uint256 tokenId,
         bytes32 to,
         uint256 amount
-    ) external {
-        
-    }
+    ) external {}
 
     function sendInitiateTransferShares(
         uint16 targetCentrifugeId,
@@ -239,21 +232,25 @@ contract MockMessageDispatcher {
     function sendDepositRequest(PoolId poolId, ShareClassId scId, bytes32 investor, AssetId assetId, uint128 amount)
         external
     {
-        hub.depositRequest(poolId, scId, investor, assetId, amount);
+        bytes memory payload = RequestMessageLib.DepositRequest(investor, amount).serialize();
+        hub.request(poolId, scId, assetId, payload);
     }
 
     function sendRedeemRequest(PoolId poolId, ShareClassId scId, bytes32 investor, AssetId assetId, uint128 amount)
         external
     {
-        hub.redeemRequest(poolId, scId, investor, assetId, amount);
+        bytes memory payload = RequestMessageLib.RedeemRequest(investor, amount).serialize();
+        hub.request(poolId, scId, assetId, payload);
     }
 
     function sendCancelDepositRequest(PoolId poolId, ShareClassId scId, bytes32 investor, AssetId assetId) external {
-        hub.cancelDepositRequest(poolId, scId, investor, assetId);
+        bytes memory payload = RequestMessageLib.CancelDepositRequest(investor).serialize();
+        hub.request(poolId, scId, assetId, payload);
     }
 
     function sendCancelRedeemRequest(PoolId poolId, ShareClassId scId, bytes32 investor, AssetId assetId) external {
-        hub.cancelRedeemRequest(poolId, scId, investor, assetId);
+        bytes memory payload = RequestMessageLib.CancelRedeemRequest(investor).serialize();
+        hub.request(poolId, scId, assetId, payload);
     }
 
     function sendUpdateHoldingAmount(
@@ -284,5 +281,13 @@ contract MockMessageDispatcher {
 
     function sendRegisterAsset(uint16 centrifugeId, AssetId assetId, uint8 decimals) external {
         hub.registerAsset(assetId, decimals);
+    }
+
+    function sendRequestCallback(PoolId poolId, ShareClassId scId, AssetId assetId, bytes calldata payload) external {
+        spoke.requestCallback(poolId, scId, assetId, payload);
+    }
+
+    function sendRequest(PoolId poolId, ShareClassId scId, AssetId assetId, bytes calldata payload) external {
+        hub.request(poolId, scId, assetId, payload);
     }
 }
