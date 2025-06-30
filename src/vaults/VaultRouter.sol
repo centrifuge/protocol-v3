@@ -13,7 +13,6 @@ import {SafeTransferLib} from "src/misc/libraries/SafeTransferLib.sol";
 import {PoolId} from "src/common/types/PoolId.sol";
 import {IGateway} from "src/common/interfaces/IGateway.sol";
 import {ShareClassId} from "src/common/types/ShareClassId.sol";
-import {IMessageDispatcher} from "src/common/interfaces/IMessageDispatcher.sol";
 
 import {BaseSyncDepositVault} from "src/vaults/BaseVaults.sol";
 import {IBaseVault} from "src/vaults/interfaces/IBaseVault.sol";
@@ -36,25 +35,17 @@ contract VaultRouter is Auth, Multicall, Recoverable, IVaultRouter {
     /// @dev Requests for Centrifuge pool are non-fungible and all have ID = 0
     uint256 private constant REQUEST_ID = 0;
 
+    ISpoke public immutable spoke;
     IEscrow public immutable escrow;
     IGateway public immutable gateway;
-    ISpoke public immutable spoke;
-    IMessageDispatcher public immutable messageDispatcher;
 
     /// @inheritdoc IVaultRouter
     mapping(address controller => mapping(IBaseVault vault => uint256 amount)) public lockedRequests;
 
-    constructor(
-        address escrow_,
-        IGateway gateway_,
-        ISpoke spoke_,
-        IMessageDispatcher messageDispatcher_,
-        address deployer
-    ) Auth(deployer) {
+    constructor(address escrow_, IGateway gateway_, ISpoke spoke_, address deployer) Auth(deployer) {
         escrow = IEscrow(escrow_);
         gateway = gateway_;
         spoke = spoke_;
-        messageDispatcher = messageDispatcher_;
     }
 
     modifier payTransaction() {

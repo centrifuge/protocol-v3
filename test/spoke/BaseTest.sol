@@ -4,6 +4,7 @@ pragma abicoder v2;
 
 import "src/misc/interfaces/IERC20.sol";
 import {ERC20} from "src/misc/ERC20.sol";
+import {IAuth} from "src/misc/interfaces/IAuth.sol";
 import {IERC6909Fungible} from "src/misc/interfaces/IERC6909.sol";
 
 import {Root} from "src/common/Root.sol";
@@ -60,11 +61,11 @@ contract BaseTest is SpokeDeployer, Test {
     uint16 public constant THIS_CHAIN_ID = OTHER_CHAIN_ID + 100;
     uint32 public constant BLOCK_CHAIN_ID = 23;
     PoolId public immutable POOL_A = newPoolId(OTHER_CHAIN_ID, 1);
-    uint256 public constant ESTIMATE_ADAPTER_1 = 1 gwei;
-    uint256 public constant ESTIMATE_ADAPTER_2 = 1.25 gwei;
-    uint256 public constant ESTIMATE_ADAPTER_3 = 1.75 gwei;
+    uint256 public constant ESTIMATE_ADAPTER_1 = 1_000_000; // 1M gas
+    uint256 public constant ESTIMATE_ADAPTER_2 = 1_250_000; // 1.25M gas
+    uint256 public constant ESTIMATE_ADAPTER_3 = 1_750_000; // 1.75M gas
     uint256 public constant ESTIMATE_ADAPTERS = ESTIMATE_ADAPTER_1 + ESTIMATE_ADAPTER_2 + ESTIMATE_ADAPTER_3;
-    uint256 public constant GAS_COST_LIMIT = 0.5 gwei;
+    uint256 public constant GAS_COST_LIMIT = 500_000; // 500K gas
     uint256 public constant DEFAULT_GAS = ESTIMATE_ADAPTERS + GAS_COST_LIMIT * 3;
     uint256 public constant DEFAULT_SUBSIDY = DEFAULT_GAS * 100;
 
@@ -74,6 +75,16 @@ contract BaseTest is SpokeDeployer, Test {
     uint128 public defaultPrice = 1 * 10 ** 18;
     uint8 public defaultDecimals = 8;
     bytes16 public defaultShareClassId = bytes16(bytes("1"));
+
+    function _wire(uint16 centrifugeId, IAdapter adapter) internal {
+        IAuth(address(adapter)).rely(address(root));
+        IAuth(address(adapter)).rely(address(guardian));
+        IAuth(address(adapter)).deny(address(this));
+
+        IAdapter[] memory adapters = new IAdapter[](1);
+        adapters[0] = adapter;
+        multiAdapter.file("adapters", centrifugeId, adapters);
+    }
 
     function setUp() public virtual {
         // We should not use the block ChainID
@@ -103,7 +114,7 @@ contract BaseTest is SpokeDeployer, Test {
         testAdapters.push(adapter3);
 
         // wire contracts
-        wire(OTHER_CHAIN_ID, adapter1, address(this));
+        _wire(OTHER_CHAIN_ID, adapter1);
         // remove deployer access
         // removeSpokeDeployerAccess(address(adapter)); // need auth permissions in tests
 

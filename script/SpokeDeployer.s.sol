@@ -42,8 +42,8 @@ contract SpokeDeployer is CommonDeployer {
     address public redemptionRestrictionsHook;
     address public fullRestrictionsHook;
 
-    function deploySpoke(uint16 centrifugeId, ISafe adminSafe_, address deployer, bool isTests) public {
-        deployCommon(centrifugeId, adminSafe_, deployer, isTests);
+    function deploySpoke(uint16 centrifugeId_, ISafe adminSafe_, address deployer, bool isTests) public {
+        deployCommon(centrifugeId_, adminSafe_, deployer, isTests);
 
         routerEscrow = new Escrow{salt: keccak256(abi.encodePacked(SALT, "escrow2"))}(deployer);
         globalEscrow = new Escrow{salt: keccak256(abi.encodePacked(SALT, "escrow3"))}(deployer);
@@ -56,7 +56,7 @@ contract SpokeDeployer is CommonDeployer {
 
         spoke = new Spoke(tokenFactory, deployer);
         balanceSheet = new BalanceSheet(root, deployer);
-        vaultRouter = new VaultRouter(address(routerEscrow), gateway, spoke, messageDispatcher, deployer);
+        vaultRouter = new VaultRouter(address(routerEscrow), gateway, spoke, deployer);
 
         // Hooks
         freezeOnlyHook = address(new FreezeOnly{salt: SALT}(address(root), deployer));
@@ -127,9 +127,6 @@ contract SpokeDeployer is CommonDeployer {
         IAuth(freezeOnlyHook).rely(address(root));
         IAuth(fullRestrictionsHook).rely(address(root));
         IAuth(redemptionRestrictionsHook).rely(address(root));
-
-        // Rely gateway
-        spoke.rely(address(gateway));
 
         // Rely others
         routerEscrow.rely(address(vaultRouter));

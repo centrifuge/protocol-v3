@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {IAuth} from "src/misc/interfaces/IAuth.sol";
-
 import {Root} from "src/common/Root.sol";
 import {Gateway} from "src/common/Gateway.sol";
 import {GasService} from "src/common/GasService.sol";
 import {Guardian, ISafe} from "src/common/Guardian.sol";
-import {IAdapter} from "src/common/interfaces/IAdapter.sol";
 import {TokenRecoverer} from "src/common/TokenRecoverer.sol";
 import {MessageProcessor} from "src/common/MessageProcessor.sol";
 import {MultiAdapter} from "src/common/adapters/MultiAdapter.sol";
@@ -24,8 +21,8 @@ string constant MAX_BATCH_SIZE_ENV = "MAX_BATCH_SIZE";
 abstract contract CommonDeployer is Script, JsonRegistry {
     uint256 constant DELAY = 48 hours;
     bytes32 immutable SALT;
-    uint128 constant FALLBACK_MSG_COST = uint128(0.02 ether); // in Weight
-    uint128 constant FALLBACK_MAX_BATCH_SIZE = uint128(10_000_000 ether); // 10M in Weight
+    uint128 constant FALLBACK_MSG_COST = uint128(1_000_000); // in GAS
+    uint128 constant FALLBACK_MAX_BATCH_SIZE = uint128(10_000_000); // 10M in Weight
 
     ISafe public adminSafe;
     Root public root;
@@ -41,12 +38,10 @@ abstract contract CommonDeployer is Script, JsonRegistry {
     constructor() {
         // If no salt is provided, a pseudo-random salt is generated,
         // thus effectively making the deployment non-deterministic
-        SALT = vm.envOr(
-            "DEPLOYMENT_SALT", keccak256(abi.encodePacked(string(abi.encodePacked(blockhash(block.number - 1)))))
-        );
+        SALT = vm.envOr("DEPLOYMENT_SALT", keccak256(abi.encodePacked(string(abi.encodePacked(block.timestamp)))));
     }
 
-    function deployCommon(uint16 centrifugeId, ISafe adminSafe_, address deployer, bool isTests) public {
+    function deployCommon(uint16 centrifugeId_, ISafe adminSafe_, address deployer, bool isTests) public {
         if (address(root) != address(0)) {
             return; // Already deployed. Make this method idempotent.
         }
@@ -63,9 +58,9 @@ abstract contract CommonDeployer is Script, JsonRegistry {
 
         gasService = new GasService(maxBatchSize, messageGasLimit);
         gateway = new Gateway(root, gasService, deployer);
-        multiAdapter = new MultiAdapter(centrifugeId, gateway, deployer);
+        multiAdapter = new MultiAdapter(centrifugeId_, gateway, deployer);
 
-        messageDispatcher = new MessageDispatcher(centrifugeId, root, gateway, tokenRecoverer, deployer);
+        messageDispatcher = new MessageDispatcher(centrifugeId_, root, gateway, tokenRecoverer, deployer);
 
         adminSafe = adminSafe_;
 
@@ -81,7 +76,8 @@ abstract contract CommonDeployer is Script, JsonRegistry {
 
     function _commonRegister() private {
         register("root", address(root));
-        register("adminSafe", address(adminSafe));
+        // Already present in load_vars.sh and not needed to be registered
+        // register("adminSafe", address(adminSafe));
         register("guardian", address(guardian));
         register("gasService", address(gasService));
         register("gateway", address(gateway));
@@ -97,7 +93,6 @@ abstract contract CommonDeployer is Script, JsonRegistry {
         root.rely(address(messageDispatcher));
         gateway.rely(address(root));
         gateway.rely(address(messageDispatcher));
-        gateway.rely(address(messageProcessor));
         gateway.rely(address(multiAdapter));
         multiAdapter.rely(address(root));
         multiAdapter.rely(address(guardian));
@@ -106,6 +101,7 @@ abstract contract CommonDeployer is Script, JsonRegistry {
         messageDispatcher.rely(address(guardian));
         messageProcessor.rely(address(root));
         messageProcessor.rely(address(gateway));
+        tokenRecoverer.rely(address(root));
         tokenRecoverer.rely(address(messageDispatcher));
         tokenRecoverer.rely(address(messageProcessor));
         poolEscrowFactory.rely(address(root));
@@ -115,16 +111,6 @@ abstract contract CommonDeployer is Script, JsonRegistry {
         gateway.file("processor", address(messageProcessor));
         gateway.file("adapter", address(multiAdapter));
         poolEscrowFactory.file("gateway", address(gateway));
-    }
-
-    function wire(uint16 centrifugeId, IAdapter adapter, address deployer) public {
-        IAuth(address(adapter)).rely(address(root));
-        IAuth(address(adapter)).deny(deployer);
-
-        IAdapter[] memory adapters = new IAdapter[](1);
-        adapters[0] = adapter;
-
-        multiAdapter.file("adapters", centrifugeId, adapters);
     }
 
     function removeCommonDeployerAccess(address deployer) public {
