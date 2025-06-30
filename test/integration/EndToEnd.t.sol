@@ -39,11 +39,13 @@ import {UpdateContractMessageLib} from "src/spoke/libraries/UpdateContractMessag
 
 import {UpdateRestrictionMessageLib} from "src/hooks/libraries/UpdateRestrictionMessageLib.sol";
 
+import {NAVManager} from "src/managers/NAVManager.sol";
+import {SimplePriceManager} from "src/managers/SimplePriceManager.sol";
+
 import {FullDeployer} from "script/FullDeployer.s.sol";
 import {MESSAGE_COST_ENV} from "script/CommonDeployer.s.sol";
 
 import {MockValuation} from "test/common/mocks/MockValuation.sol";
-import {MockSnapshotHook} from "test/hooks/mocks/MockSnapshotHook.sol";
 import {LocalAdapter} from "test/integration/adapters/LocalAdapter.sol";
 
 import "forge-std/Test.sol";
@@ -84,7 +86,7 @@ contract EndToEndDeployment is Test {
         // Others
         IdentityValuation identityValuation;
         MockValuation valuation;
-        MockSnapshotHook snapshotHook;
+        NAVManager navManager;
     }
 
     struct CSpoke {
@@ -124,11 +126,6 @@ contract EndToEndDeployment is Test {
     address immutable ANY = makeAddr("ANY");
 
     uint128 constant USDC_AMOUNT_1 = 1_000_000e6; // Measured in USDC: 1M of USDC
-
-    AccountId constant ASSET_ACCOUNT = AccountId.wrap(0x01);
-    AccountId constant EQUITY_ACCOUNT = AccountId.wrap(0x02);
-    AccountId constant LOSS_ACCOUNT = AccountId.wrap(0x03);
-    AccountId constant GAIN_ACCOUNT = AccountId.wrap(0x04);
 
     AssetId USD_ID;
     PoolId POOL_A;
@@ -179,6 +176,11 @@ contract EndToEndDeployment is Test {
         // We not use the VM chain
         vm.chainId(0xDEAD);
 
+        // Initialize default values
+        USD_ID = deployA.USD_ID();
+        POOL_A = deployA.hubRegistry().poolId(CENTRIFUGE_ID_A, 1);
+        SC_1 = deployA.shareClassManager().previewNextShareClassId(POOL_A);
+
         h = CHub({
             centrifugeId: CENTRIFUGE_ID_A,
             root: deployA.root(),
@@ -191,13 +193,8 @@ contract EndToEndDeployment is Test {
             hub: deployA.hub(),
             identityValuation: deployA.identityValuation(),
             valuation: new MockValuation(deployA.hubRegistry()),
-            snapshotHook: new MockSnapshotHook()
+            navManager: new NAVManager(POOL_A, deployA.hub(), FM)
         });
-
-        // Initialize default values
-        USD_ID = deployA.USD_ID();
-        POOL_A = h.hubRegistry.poolId(CENTRIFUGE_ID_A, 1);
-        SC_1 = h.shareClassManager.previewNextShareClassId(POOL_A);
 
         vm.label(address(adapterAToB), "AdapterAToB");
         vm.label(address(adapterBToA), "AdapterBToA");
@@ -341,10 +338,11 @@ contract EndToEndFlows is EndToEndUtils {
         h.hub.setPoolMetadata(POOL_A, bytes("Testing pool"));
         h.hub.addShareClass(POOL_A, "Tokenized MMF", "MMF", bytes32("salt"));
 
-        h.hub.createAccount(POOL_A, ASSET_ACCOUNT, true);
-        h.hub.createAccount(POOL_A, EQUITY_ACCOUNT, false);
-        h.hub.createAccount(POOL_A, LOSS_ACCOUNT, false);
-        h.hub.createAccount(POOL_A, GAIN_ACCOUNT, false);
+        SimplePriceManager priceManager = new SimplePriceManager(POOL_A, SC_1, h.hub);
+        h.navManager.setNAVHook(priceManager);
+
+        h.hub.updateHubManager(POOL_A, address(h.navManager), true);
+        h.hub.updateHubManager(POOL_A, address(priceManager), true);
 
         vm.stopPrank();
     }
@@ -360,16 +358,16 @@ contract EndToEndFlows is EndToEndUtils {
         h.hub.notifyPool{value: GAS}(POOL_A, s_.centrifugeId);
         h.hub.notifyShareClass{value: GAS}(POOL_A, SC_1, s_.centrifugeId, s_.redemptionRestrictionsHook.toBytes32());
 
-        h.hub.initializeHolding(
-            POOL_A, SC_1, s_.usdcId, h.valuation, ASSET_ACCOUNT, EQUITY_ACCOUNT, GAIN_ACCOUNT, LOSS_ACCOUNT
-        );
+        h.navManager.initializeNetwork(s_.centrifugeId);
+        h.navManager.initializeHolding(SC_1, s_.usdcId, h.valuation);
+
         h.hub.setRequestManager{value: GAS}(POOL_A, SC_1, s_.usdcId, address(s.asyncRequestManager).toBytes32());
         h.hub.updateBalanceSheetManager{value: GAS}(
             s_.centrifugeId, POOL_A, address(s.asyncRequestManager).toBytes32(), true
         );
         h.hub.updateBalanceSheetManager{value: GAS}(s_.centrifugeId, POOL_A, address(s.syncManager).toBytes32(), true);
         h.hub.updateBalanceSheetManager{value: GAS}(s_.centrifugeId, POOL_A, BSM.toBytes32(), true);
-        h.hub.setSnapshotHook(POOL_A, h.snapshotHook);
+        h.hub.setSnapshotHook(POOL_A, h.navManager);
 
         vm.startPrank(BSM);
         s_.gateway.subsidizePool{value: DEFAULT_SUBSIDY}(POOL_A);
@@ -539,10 +537,12 @@ contract EndToEndFlows is EndToEndUtils {
         assertEq(amount, USDC_AMOUNT_1, "expected amount");
         assertEq(value, assetToPool(USDC_AMOUNT_1), "expected value");
 
-        assertEq(h.snapshotHook.synced(POOL_A, SC_1, s.centrifugeId), nonZeroPrices ? 1 : 2, "expected snapshots");
+        checkAccountValue(h.navManager.assetAccount(s.centrifugeId, s.usdcId), assetToPool(USDC_AMOUNT_1), true);
+        checkAccountValue(h.navManager.equityAccount(s.centrifugeId), assetToPool(USDC_AMOUNT_1), true);
 
-        checkAccountValue(ASSET_ACCOUNT, assetToPool(USDC_AMOUNT_1), true);
-        checkAccountValue(EQUITY_ACCOUNT, assetToPool(USDC_AMOUNT_1), true);
+        // (uint128 issuance, D18 poolPerShare) = h.shareClassManager.metrics(SC_1);
+        // assertEq(issuance, );
+        // assertEq(poolPerShare.raw(), d18(1, 1).raw());
     }
 
     function _testUpdateAccountingAfterRedeem(bool sameChain, bool afterAsyncDeposit) public {
@@ -557,10 +557,12 @@ contract EndToEndFlows is EndToEndUtils {
         assertEq(amount, 0, "expected amount");
         assertEq(value, assetToPool(0), "expected value");
 
-        assertEq(h.snapshotHook.synced(POOL_A, SC_1, s.centrifugeId), 2, "expected snapshots");
+        checkAccountValue(h.navManager.assetAccount(s.centrifugeId, s.usdcId), assetToPool(0), true);
+        checkAccountValue(h.navManager.equityAccount(s.centrifugeId), assetToPool(0), true);
 
-        checkAccountValue(ASSET_ACCOUNT, assetToPool(0), true);
-        checkAccountValue(EQUITY_ACCOUNT, assetToPool(0), true);
+        // (uint128 issuance, D18 poolPerShare) = h.shareClassManager.metrics(SC_1);
+        // assertEq(issuance, 0);
+        // assertEq(poolPerShare.raw(), d18(1, 1).raw());
     }
 }
 
@@ -605,10 +607,12 @@ contract EndToEndUseCases is EndToEndFlows {
         assertEq(amount, USDC_AMOUNT_1 / 5);
         assertEq(value, assetToPool(USDC_AMOUNT_1 / 5));
 
-        assertEq(h.snapshotHook.synced(POOL_A, SC_1, s.centrifugeId), 1);
+        checkAccountValue(h.navManager.assetAccount(s.centrifugeId, s.usdcId), assetToPool(USDC_AMOUNT_1 / 5), true);
+        checkAccountValue(h.navManager.equityAccount(s.centrifugeId), assetToPool(USDC_AMOUNT_1 / 5), true);
 
-        checkAccountValue(ASSET_ACCOUNT, assetToPool(USDC_AMOUNT_1 / 5), true);
-        checkAccountValue(EQUITY_ACCOUNT, assetToPool(USDC_AMOUNT_1 / 5), true);
+        (uint128 issuance, D18 poolPerShare) = h.shareClassManager.metrics(SC_1);
+        assertEq(issuance, 0);
+        assertEq(poolPerShare.raw(), d18(1, 1).raw());
     }
 
     /// forge-config: default.isolate = true
