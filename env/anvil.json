@@ -5,6 +5,7 @@
         "environment": "testnet",
         "network": "anvil",
         "catapultaNetwork": "anvil",
+        "batchGasLimit": "25000000",
         "connectsTo": [
             "anvil"
         ]

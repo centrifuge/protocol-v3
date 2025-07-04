@@ -277,20 +277,19 @@ run_forge_script() {
     print_info "Chain ID: $CHAIN_ID"
 
     # Construct the forge command
-    FORGE_CMD="ADMIN=$ADMIN NETWORK=$NETWORK forge script \
+    FORGE_CMD="VERSION=$VERSION ADMIN=$ADMIN NETWORK=$NETWORK forge script \
         \"$ROOT_DIR/script/$script.s.sol\" \
+        --tc $script \
         --optimize \
         --rpc-url \"$RPC_URL\" \
         --private-key \"$PRIVATE_KEY\" \
-        --verify \
         --broadcast \
         --chain-id \"$CHAIN_ID\" \
-        --verbosity 4 \
         ${FORGE_ARGS[*]}"
 
-    CATAPULTA_CMD="NETWORK=$NETWORK catapulta script \
+    CATAPULTA_CMD="VERSION=$VERSION ADMIN=$ADMIN NETWORK=$NETWORK catapulta script \
         --private-key $PRIVATE_KEY \
-        --account $ADMIN \
+        --tc $script \
         --chain-id \"$CHAIN_ID\" \
         \"$ROOT_DIR/script/$script.s.sol\" \
         --optimize \
@@ -326,6 +325,7 @@ run_forge_script() {
         print_info "Using Forge deployment"
         print_info "Running: forge script $script ..."
         eval "$FORGE_CMD"
+        # eval "$FORGE_CMD --skip FullActionBatcher --resume --verify"
         if [[ $? -ne 0 ]]; then
             # Check if deployment succeeded but verification failed
             local latest_deployment="$ROOT_DIR/env/latest/${CHAIN_ID}-latest.json"
@@ -475,6 +475,8 @@ fi
 
 case "$STEP" in
 "deploy:protocol")
+    print_section "Building Protocol"
+    forge clean; forge build --jobs "$(sysctl -n hw.ncpu)"
     print_section "Running Deployment"
     print_subtitle "Deploying core protocol contracts for $NETWORK"
     run_forge_script "FullDeployer"
@@ -483,6 +485,8 @@ case "$STEP" in
     print_section "Deployment Complete"
     ;;
 "deploy:adapters")
+    print_section "Building Protocol"
+    forge clean; forge build --jobs "$(sysctl -n hw.ncpu)"
     print_section "Running Deployment"
     print_step "Deploying adapters for $NETWORK"
     run_forge_script "Adapters"
@@ -509,18 +513,6 @@ case "$STEP" in
     print_section "Verifying Adapters contracts for $NETWORK"
     verify_contracts "Adapters"
     print_section "Verification Complete"
-    ;;
-"forge:clean")
-    print_subtitle "Cleaning up forge files and folders"
-    print_step "rm -rf $ROOT_DIR/broadcast/ "
-    rm -rf "$ROOT_DIR/broadcast/*"
-    print_step "Removing out files"
-    rm -rf "$ROOT_DIR/out/*"
-    print_step "Removing cache files"
-    rm -rf "$ROOT_DIR/cache/*"
-    print_step "Running forge clean"
-    forge clean
-    print_subtitle "Forge files and folders cleaned"
     ;;
 *)
     echo "Invalid step: $STEP"
