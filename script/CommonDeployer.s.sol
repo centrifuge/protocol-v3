@@ -20,7 +20,7 @@ struct CommonInput {
     uint16 centrifugeId;
     IRoot root;
     ISafe adminSafe;
-    uint128 batchGasLimit;
+    uint128 maxGasLimit;
     bytes32 version;
 }
 
@@ -165,7 +165,7 @@ abstract contract CommonDeployer is Script, JsonRegistry, CreateXScript {
         gasService = GasService(
             create3(
                 generateSalt("gasService"),
-                abi.encodePacked(type(GasService).creationCode, abi.encode(input.batchGasLimit))
+                abi.encodePacked(type(GasService).creationCode, abi.encode(input.maxGasLimit))
             )
         );
 
