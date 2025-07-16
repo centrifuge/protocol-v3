@@ -2,31 +2,35 @@
 pragma solidity 0.8.28;
 pragma abicoder v2;
 
-import "src/misc/interfaces/IERC20.sol";
-import {ERC20} from "src/misc/ERC20.sol";
-import {IERC6909Fungible} from "src/misc/interfaces/IERC6909.sol";
+import "centrifuge-v3/src/misc/interfaces/IERC20.sol";
+import {ERC20} from "centrifuge-v3/src/misc/ERC20.sol";
+import {IERC6909Fungible} from "centrifuge-v3/src/misc/interfaces/IERC6909.sol";
 
-import {AssetId} from "src/common/types/AssetId.sol";
-import {newAssetId} from "src/common/types/AssetId.sol";
-import {ISafe} from "src/common/interfaces/IGuardian.sol";
-import {IAdapter} from "src/common/interfaces/IAdapter.sol";
-import {PoolId, newPoolId} from "src/common/types/PoolId.sol";
-import {ShareClassId} from "src/common/types/ShareClassId.sol";
-import {MAX_MESSAGE_COST} from "src/common/interfaces/IGasService.sol";
-import {MessageLib, VaultUpdateKind} from "src/common/libraries/MessageLib.sol";
+import {AssetId} from "centrifuge-v3/src/common/types/AssetId.sol";
+import {newAssetId} from "centrifuge-v3/src/common/types/AssetId.sol";
+import {ISafe} from "centrifuge-v3/src/common/interfaces/IGuardian.sol";
+import {IAdapter} from "centrifuge-v3/src/common/interfaces/IAdapter.sol";
+import {PoolId, newPoolId} from "centrifuge-v3/src/common/types/PoolId.sol";
+import {ShareClassId} from "centrifuge-v3/src/common/types/ShareClassId.sol";
+import {MAX_MESSAGE_COST} from "centrifuge-v3/src/common/interfaces/IGasService.sol";
+import {MessageLib, VaultUpdateKind} from "centrifuge-v3/src/common/libraries/MessageLib.sol";
 
-import {VaultKind} from "src/spoke/interfaces/IVault.sol";
-import {IShareToken} from "src/spoke/interfaces/IShareToken.sol";
-import {IVaultFactory} from "src/spoke/factories/interfaces/IVaultFactory.sol";
+import {VaultKind} from "centrifuge-v3/src/spoke/interfaces/IVault.sol";
+import {IShareToken} from "centrifuge-v3/src/spoke/interfaces/IShareToken.sol";
+import {IVaultFactory} from "centrifuge-v3/src/spoke/factories/interfaces/IVaultFactory.sol";
 
-import {AsyncVault} from "src/vaults/AsyncVault.sol";
+import {AsyncVault} from "centrifuge-v3/src/vaults/AsyncVault.sol";
 
-import {ExtendedSpokeDeployer, ExtendedSpokeActionBatcher, CommonInput} from "script/ExtendedSpokeDeployer.s.sol";
+import {
+    ExtendedSpokeDeployer,
+    ExtendedSpokeActionBatcher,
+    CommonInput
+} from "centrifuge-v3/script/ExtendedSpokeDeployer.s.sol";
 
-import {MockSafe} from "test/spoke/mocks/MockSafe.sol";
-import {MockERC6909} from "test/misc/mocks/MockERC6909.sol";
-import {MockAdapter} from "test/common/mocks/MockAdapter.sol";
-import {MockCentrifugeChain} from "test/spoke/mocks/MockCentrifugeChain.sol";
+import {MockSafe} from "centrifuge-v3/test/spoke/mocks/MockSafe.sol";
+import {MockERC6909} from "centrifuge-v3/test/misc/mocks/MockERC6909.sol";
+import {MockAdapter} from "centrifuge-v3/test/common/mocks/MockAdapter.sol";
+import {MockCentrifugeChain} from "centrifuge-v3/test/spoke/mocks/MockCentrifugeChain.sol";
 
 import "forge-std/Test.sol";
 

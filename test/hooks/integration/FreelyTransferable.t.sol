@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {CastLib} from "src/misc/libraries/CastLib.sol";
+import {CastLib} from "centrifuge-v3/src/misc/libraries/CastLib.sol";
 
-import {IAsyncRequestManager} from "src/vaults/interfaces/IVaultManagers.sol";
+import {IAsyncRequestManager} from "centrifuge-v3/src/vaults/interfaces/IVaultManagers.sol";
 
-import {FreelyTransferable} from "src/hooks/FreelyTransferable.sol";
+import {FreelyTransferable} from "centrifuge-v3/src/hooks/FreelyTransferable.sol";
 
-import "test/spoke/BaseTest.sol";
+import "centrifuge-v3/test/spoke/BaseTest.sol";
 
 contract FreelyTransferableTest is BaseTest {
     using CastLib for *;

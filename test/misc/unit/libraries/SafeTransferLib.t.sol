@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {IERC7751} from "src/misc/interfaces/IERC7751.sol";
-import {SafeTransferLib} from "src/misc/libraries/SafeTransferLib.sol";
+import {IERC7751} from "centrifuge-v3/src/misc/interfaces/IERC7751.sol";
+import {SafeTransferLib} from "centrifuge-v3/src/misc/libraries/SafeTransferLib.sol";
 
 import "forge-std/Test.sol";
 
@@ -60,7 +60,7 @@ contract ERC20WithBooleanAlwaysFalse {
 }
 
 /// @author Modified from
-/// https://github.com/morpho-org/morpho-blue/blob/main/test/forge/libraries/SafeTransferLibTest.sol
+/// https://github.com/morpho-org/morpho-blue/blob/main/centrifuge-v3/test/forge/libraries/SafeTransferLibTest.sol
 contract SafeTransferLibTest is Test {
     ERC20WithoutBoolean public tokenWithoutBoolean;
     ERC20WithBooleanAlwaysFalse public tokenWithBooleanAlwaysFalse;
