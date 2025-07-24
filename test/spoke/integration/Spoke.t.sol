@@ -219,7 +219,7 @@ contract SpokeTest is BaseTest, SpokeTestHelper {
         // fails for invalid share class token
         PoolId poolId = vault.poolId();
         ShareClassId scId = vault.scId();
-        vm.expectRevert(ISpoke.UnknownToken.selector);
+        vm.expectRevert(ISpoke.ShareTokenDoesNotExist.selector);
         spoke.crosschainTransferShares{value: DEFAULT_GAS}(
             OTHER_CHAIN_ID, PoolId.wrap(poolId.raw() + 1), scId, centChainAddress, amount, 0
         );
@@ -254,7 +254,7 @@ contract SpokeTest is BaseTest, SpokeTestHelper {
             UpdateRestrictionMessageLib.UpdateRestrictionMember(destinationAddress.toBytes32(), validUntil).serialize()
         );
 
-        vm.expectRevert(ISpoke.UnknownToken.selector);
+        vm.expectRevert(ISpoke.ShareTokenDoesNotExist.selector);
         spoke.executeTransferShares(PoolId.wrap(poolId.raw() + 1), scId, destinationAddress.toBytes32(), amount);
 
         assertTrue(shareToken.checkTransferRestriction(address(0), destinationAddress, 0));
@@ -299,7 +299,7 @@ contract SpokeTest is BaseTest, SpokeTestHelper {
         // fails for invalid share class token
         PoolId poolId = vault.poolId();
         ShareClassId scId = vault.scId();
-        vm.expectRevert(ISpoke.UnknownToken.selector);
+        vm.expectRevert(ISpoke.ShareTokenDoesNotExist.selector);
         spoke.crosschainTransferShares{value: DEFAULT_GAS}(
             OTHER_CHAIN_ID, PoolId.wrap(poolId.raw() + 1), scId, destinationAddress.toBytes32(), amount, 0
         );
@@ -324,7 +324,7 @@ contract SpokeTest is BaseTest, SpokeTestHelper {
         vm.prank(randomUser);
         hook.updateMember(address(shareToken), randomUser, validUntil);
 
-        vm.expectRevert(ISpoke.UnknownToken.selector);
+        vm.expectRevert(ISpoke.ShareTokenDoesNotExist.selector);
         spoke.updateRestriction(
             PoolId.wrap(100),
             ShareClassId.wrap(bytes16(bytes("100"))),
@@ -348,14 +348,14 @@ contract SpokeTest is BaseTest, SpokeTestHelper {
         uint64 validUntil = uint64(block.timestamp + 7 days);
         address secondUser = makeAddr("secondUser");
 
-        vm.expectRevert(ISpoke.UnknownToken.selector);
+        vm.expectRevert(ISpoke.ShareTokenDoesNotExist.selector);
         spoke.updateRestriction(
             PoolId.wrap(poolId.raw() + 1),
             scId,
             UpdateRestrictionMessageLib.UpdateRestrictionFreeze(randomUser.toBytes32()).serialize()
         );
 
-        vm.expectRevert(ISpoke.UnknownToken.selector);
+        vm.expectRevert(ISpoke.ShareTokenDoesNotExist.selector);
         spoke.updateRestriction(
             PoolId.wrap(poolId.raw() + 1),
             scId,
@@ -405,7 +405,7 @@ contract SpokeTest is BaseTest, SpokeTestHelper {
         string memory updatedTokenName = "newName";
         string memory updatedTokenSymbol = "newSymbol";
 
-        vm.expectRevert(ISpoke.UnknownToken.selector);
+        vm.expectRevert(ISpoke.ShareTokenDoesNotExist.selector);
         spoke.updateShareMetadata(
             PoolId.wrap(100), ShareClassId.wrap(bytes16(bytes("100"))), updatedTokenName, updatedTokenSymbol
         );
@@ -434,7 +434,7 @@ contract SpokeTest is BaseTest, SpokeTestHelper {
 
         address newHook = makeAddr("NewHook");
 
-        vm.expectRevert(ISpoke.UnknownToken.selector);
+        vm.expectRevert(ISpoke.ShareTokenDoesNotExist.selector);
         spoke.updateShareHook(PoolId.wrap(100), ShareClassId.wrap(bytes16(bytes("100"))), newHook);
 
         vm.expectRevert(IAuth.NotAuthorized.selector);
@@ -460,7 +460,7 @@ contract SpokeTest is BaseTest, SpokeTestHelper {
         bytes memory update =
             UpdateRestrictionMessageLib.UpdateRestrictionFreeze(makeAddr("User").toBytes32()).serialize();
 
-        vm.expectRevert(ISpoke.UnknownToken.selector);
+        vm.expectRevert(ISpoke.ShareTokenDoesNotExist.selector);
         spoke.updateRestriction(PoolId.wrap(100), ShareClassId.wrap(bytes16(bytes("100"))), update);
 
         vm.expectRevert(IAuth.NotAuthorized.selector);
