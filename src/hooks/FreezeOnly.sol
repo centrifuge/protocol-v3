@@ -29,6 +29,7 @@ contract FreezeOnly is BaseTransferHook {
     {
         if (isSourceOrTargetFrozen(from, to, hookData)) return false;
 
+        // All transfer types are allowed if not frozen
         return true;
     }
 }
