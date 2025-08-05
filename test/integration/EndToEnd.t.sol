@@ -552,7 +552,7 @@ contract EndToEndFlows is EndToEndUtils {
         vm.startPrank(poolManager);
 
         // Check if vault already exists (for fork tests)
-        address existingVault = address(spoke.asyncRequestManager.vaultByAssetId(poolId, shareClassId, assetId));
+        address existingVault = address(spoke.spoke.vault(poolId, shareClassId, assetId, spoke.asyncRequestManager));
         if (existingVault == address(0)) {
             // If we have a fallback vault (for fork tests), use it
             if (fallbackVault != address(0)) {
@@ -567,7 +567,7 @@ contract EndToEndFlows is EndToEndUtils {
             );
         }
 
-        vault = IAsyncVault(address(spoke.asyncRequestManager.vaultByAssetId(poolId, shareClassId, assetId)));
+        vault = IAsyncVault(address(spoke.spoke.vault(poolId, shareClassId, assetId, spoke.asyncRequestManager)));
         assertNotEq(address(vault), address(0));
     }
 
@@ -704,7 +704,7 @@ contract EndToEndFlows is EndToEndUtils {
     ) internal {
         vm.startPrank(poolManager);
         // Check if vault already exists (for fork tests)
-        address existingVault = address(spoke.asyncRequestManager.vaultByAssetId(poolId, shareClassId, assetId));
+        address existingVault = address(spoke.spoke.vault(poolId, shareClassId, assetId, spoke.asyncRequestManager));
         if (existingVault == address(0)) {
             hub.hub.updateVault{value: GAS}(
                 poolId, shareClassId, assetId, spoke.syncDepositVaultFactory, VaultUpdateKind.DeployAndLink, EXTRA_GAS
@@ -730,7 +730,8 @@ contract EndToEndFlows is EndToEndUtils {
         uint128 amount,
         bool skipPreciseAssertion
     ) internal {
-        IBaseVault vault = IBaseVault(address(spoke.asyncRequestManager.vaultByAssetId(poolId, shareClassId, assetId)));
+        IBaseVault vault =
+            IBaseVault(address(spoke.spoke.vault(poolId, shareClassId, assetId, spoke.asyncRequestManager)));
 
         // Store initial share balance for fork tests
         uint256 initialShares;
@@ -787,7 +788,7 @@ contract EndToEndFlows is EndToEndUtils {
         // Resolve vault - use existing if provided, otherwise get from manager
         IAsyncRedeemVault vault = existingVault != address(0)
             ? IAsyncRedeemVault(existingVault)
-            : IAsyncRedeemVault(address(spoke.asyncRequestManager.vaultByAssetId(poolId, shareClassId, assetId)));
+            : IAsyncRedeemVault(address(spoke.spoke.vault(poolId, shareClassId, assetId, spoke.asyncRequestManager)));
 
         vm.startPrank(investor);
         uint128 shares = uint128(spoke.spoke.shareToken(poolId, shareClassId).balanceOf(investor));
@@ -895,7 +896,7 @@ contract EndToEndFlows is EndToEndUtils {
         );
 
         IAsyncRedeemVault vault =
-            IAsyncRedeemVault(address(s.asyncRequestManager.vaultByAssetId(POOL_A, SC_1, s.usdcId)));
+            IAsyncRedeemVault(address(s.spoke.vault(POOL_A, SC_1, s.usdcId, s.asyncRequestManager)));
 
         vm.startPrank(INVESTOR_A);
         uint128 shares = uint128(s.spoke.shareToken(POOL_A, SC_1).balanceOf(INVESTOR_A));
@@ -1106,7 +1107,7 @@ contract EndToEndUseCases is EndToEndFlows {
             POOL_A, SC_1, s.usdcId, s.asyncVaultFactory, VaultUpdateKind.DeployAndLink, EXTRA_GAS
         );
 
-        address vault = address(s.asyncRequestManager.vaultByAssetId(POOL_A, SC_1, s.usdcId));
+        address vault = address(s.spoke.vault(POOL_A, SC_1, s.usdcId, s.asyncRequestManager));
 
         h.hub.updateVault{value: GAS}(POOL_A, SC_1, s.usdcId, vault.toBytes32(), VaultUpdateKind.Unlink, EXTRA_GAS);
 
@@ -1139,7 +1140,7 @@ contract EndToEndUseCases is EndToEndFlows {
             POOL_A, SC_1, s.usdcId, s.asyncVaultFactory, VaultUpdateKind.DeployAndLink, EXTRA_GAS
         );
 
-        IAsyncVault vault = IAsyncVault(address(s.asyncRequestManager.vaultByAssetId(POOL_A, SC_1, s.usdcId)));
+        IAsyncVault vault = IAsyncVault(address(s.spoke.vault(POOL_A, SC_1, s.usdcId, s.asyncRequestManager)));
 
         vm.startPrank(INVESTOR_A);
         s.usdc.approve(address(vault), USDC_AMOUNT_1);
