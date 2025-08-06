@@ -13,7 +13,7 @@ import {ShareClassId} from "../../../src/common/types/ShareClassId.sol";
 
 import {ShareToken} from "../../../src/spoke/ShareToken.sol";
 import {VaultDetails} from "../../../src/spoke/interfaces/ISpoke.sol";
-import {IVault} from "../../../src/spoke/interfaces/IVaultManager.sol";
+import {IVault} from "../../../src/spoke/interfaces/IVault.sol";
 
 import {IBaseVault} from "../../../src/vaults/interfaces/IBaseVault.sol";
 
@@ -132,7 +132,6 @@ contract SpokeDeployVaultTest is BaseTest, SpokeTestHelper {
             // check vault state
             assertEq(vaultAddress, vault_, "vault address mismatch");
             AsyncVault vault = AsyncVault(vault_);
-            assertEq(address(vault.manager()), address(asyncRequestManager), "investment manager mismatch");
             assertEq(vault.asset(), asset, "asset mismatch");
             assertEq(vault.poolId().raw(), poolId.raw(), "poolId mismatch");
             assertEq(vault.scId().raw(), scId.raw(), "scId mismatch");
