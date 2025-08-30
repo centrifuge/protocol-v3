@@ -197,7 +197,9 @@ abstract contract CommonDeployer is Script, JsonRegistry, CreateXScript {
         multiAdapter = MultiAdapter(
             create3(
                 generateSalt("multiAdapter"),
-                abi.encodePacked(type(MultiAdapter).creationCode, abi.encode(input.centrifugeId, gateway, batcher))
+                abi.encodePacked(
+                    type(MultiAdapter).creationCode, abi.encode(input.centrifugeId, gateway, messageProcessor, batcher)
+                )
             )
         );
 
