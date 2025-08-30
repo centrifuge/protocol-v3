@@ -49,11 +49,12 @@ import {AsyncRequestManager} from "../../src/vaults/AsyncRequestManager.sol";
 import {IAsyncRedeemVault} from "../../src/vaults/interfaces/IAsyncVault.sol";
 
 import {MockSnapshotHook} from "../hooks/mocks/MockSnapshotHook.sol";
-
 import {FreezeOnly} from "../../src/hooks/FreezeOnly.sol";
 import {FullRestrictions} from "../../src/hooks/FullRestrictions.sol";
 import {RedemptionRestrictions} from "../../src/hooks/RedemptionRestrictions.sol";
 import {UpdateRestrictionMessageLib} from "../../src/hooks/libraries/UpdateRestrictionMessageLib.sol";
+
+import {QueueManager} from "../../src/managers/QueueManager.sol";
 
 import {IdentityValuation} from "../../src/valuations/IdentityValuation.sol";
 
@@ -122,6 +123,7 @@ contract EndToEndDeployment is Test {
         // Others
         ERC20 usdc;
         AssetId usdcId;
+        QueueManager queueManager;
     }
 
     ISafe immutable SAFE_ADMIN_A = ISafe(makeAddr("SafeAdminA"));
@@ -149,6 +151,8 @@ contract EndToEndDeployment is Test {
     AssetId USD_ID;
     PoolId POOL_A;
     ShareClassId SC_1;
+
+    mapping(uint16 centrifugeId => AssetId[]) assetIds;
 
     FullDeployer deployA = new FullDeployer();
     FullDeployer deployB = new FullDeployer();
@@ -269,6 +273,9 @@ contract EndToEndDeployment is Test {
         s_.syncManager = deploy.syncManager();
         s_.usdc = new ERC20(6);
         s_.usdcId = newAssetId(centrifugeId, 1);
+        s_.queueManager = deploy.queueManager();
+
+        assetIds[centrifugeId].push(s_.usdcId);
 
         // Initialize default values
         s_.usdc.file("name", "USD Coin");
@@ -438,6 +445,9 @@ contract EndToEndFlows is EndToEndUtils {
             spoke.centrifugeId, poolId, address(spoke.syncManager).toBytes32(), true
         );
         hub.hub.updateBalanceSheetManager{value: GAS}(spoke.centrifugeId, poolId, BSM.toBytes32(), true);
+        hub.hub.updateBalanceSheetManager{value: GAS}(
+            spoke.centrifugeId, poolId, address(spoke.queueManager).toBytes32(), true
+        );
 
         vm.stopPrank();
     }
@@ -991,17 +1001,14 @@ contract EndToEndFlows is EndToEndUtils {
 
     function _testUpdateAccountingAfterDeposit(bool sameChain, bool afterAsyncDeposit, bool nonZeroPrices) public {
         (afterAsyncDeposit) ? _testAsyncDeposit(sameChain, nonZeroPrices) : _testSyncDeposit(sameChain, nonZeroPrices);
-
-        vm.startPrank(BSM);
-        s.balanceSheet.submitQueuedAssets(POOL_A, SC_1, s.usdcId, EXTRA_GAS);
-        s.balanceSheet.submitQueuedShares(POOL_A, SC_1, EXTRA_GAS);
+        s.queueManager.sync(POOL_A, SC_1, assetIds[s.centrifugeId]);
 
         // CHECKS
         (uint128 amount, uint128 value,,) = h.holdings.holding(POOL_A, SC_1, s.usdcId);
         assertEq(amount, USDC_AMOUNT_1, "expected amount");
         assertEq(value, assetToPool(USDC_AMOUNT_1), "expected value");
 
-        assertEq(h.snapshotHook.synced(POOL_A, SC_1, s.centrifugeId), nonZeroPrices ? 1 : 2, "expected snapshots");
+        assertEq(h.snapshotHook.synced(POOL_A, SC_1, s.centrifugeId), 1, "expected snapshots");
 
         checkAccountValue(ASSET_ACCOUNT, assetToPool(USDC_AMOUNT_1), true);
         checkAccountValue(EQUITY_ACCOUNT, assetToPool(USDC_AMOUNT_1), true);
@@ -1009,16 +1016,13 @@ contract EndToEndFlows is EndToEndUtils {
 
     function _testUpdateAccountingAfterRedeem(bool sameChain, bool afterAsyncDeposit) public {
         _testAsyncRedeem(sameChain, afterAsyncDeposit, true);
-
-        vm.startPrank(BSM);
-        s.balanceSheet.submitQueuedAssets(POOL_A, SC_1, s.usdcId, EXTRA_GAS);
-        s.balanceSheet.submitQueuedShares(POOL_A, SC_1, EXTRA_GAS);
+        s.queueManager.sync(POOL_A, SC_1, assetIds[s.centrifugeId]);
 
         (uint128 amount, uint128 value,,) = h.holdings.holding(POOL_A, SC_1, s.usdcId);
         assertEq(amount, 0, "expected amount");
         assertEq(value, assetToPool(0), "expected value");
 
-        assertEq(h.snapshotHook.synced(POOL_A, SC_1, s.centrifugeId), 2, "expected snapshots");
+        assertEq(h.snapshotHook.synced(POOL_A, SC_1, s.centrifugeId), 1, "expected snapshots");
 
         checkAccountValue(ASSET_ACCOUNT, assetToPool(0), true);
         checkAccountValue(EQUITY_ACCOUNT, assetToPool(0), true);
@@ -1168,7 +1172,7 @@ contract EndToEndUseCases is EndToEndFlows, VMLabeling {
         s.usdc.approve(address(s.balanceSheet), USDC_AMOUNT_1);
         s.balanceSheet.deposit(POOL_A, SC_1, address(s.usdc), 0, USDC_AMOUNT_1);
         s.balanceSheet.withdraw(POOL_A, SC_1, address(s.usdc), 0, BSM, USDC_AMOUNT_1 * 4 / 5);
-        s.balanceSheet.submitQueuedAssets(POOL_A, SC_1, s.usdcId, EXTRA_GAS);
+        s.queueManager.sync(POOL_A, SC_1, assetIds[s.centrifugeId]);
 
         // CHECKS
         assertEq(s.usdc.balanceOf(BSM), USDC_AMOUNT_1 * 4 / 5);
