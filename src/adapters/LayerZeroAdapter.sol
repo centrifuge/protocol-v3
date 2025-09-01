@@ -20,6 +20,8 @@ import {MathLib} from "../misc/libraries/MathLib.sol";
 
 import {IMessageHandler} from "../common/interfaces/IMessageHandler.sol";
 
+import "forge-std/Test.sol";
+
 /// @title  LayerZero Adapter
 /// @notice Routing contract that integrates with LayerZero V2.
 /// @dev    A delegate is set on deployment, to configure the DVN and executor
@@ -74,7 +76,7 @@ contract LayerZeroAdapter is Auth, ILayerZeroAdapter {
         require(source.addr != address(0) && source.addr == origin.sender.toAddressLeftPadded(), InvalidSource());
         require(msg.sender == address(endpoint), NotLayerZeroEndpoint());
 
-        entrypoint.handle(source.centrifugeId, payload);
+        entrypoint.handle{value: msg.value}(source.centrifugeId, payload);
     }
 
     /// @inheritdoc ILayerZeroReceiver
@@ -93,7 +95,7 @@ contract LayerZeroAdapter is Auth, ILayerZeroAdapter {
     //----------------------------------------------------------------------------------------------
 
     /// @inheritdoc IAdapter
-    function send(uint16 centrifugeId, bytes calldata payload, uint256 gasLimit, address refund)
+    function send(uint16 centrifugeId, bytes calldata payload, uint256 gasLimit, uint256 gasValue, address refund)
         external
         payable
         returns (bytes32 adapterData)
@@ -103,28 +105,33 @@ contract LayerZeroAdapter is Auth, ILayerZeroAdapter {
         require(destination.layerZeroEid != 0, UnknownChainId());
 
         MessagingReceipt memory receipt =
-            endpoint.send{value: msg.value}(_params(destination, payload, gasLimit), refund);
+            endpoint.send{value: msg.value}(_params(destination, payload, gasLimit, gasValue), refund);
         adapterData = receipt.guid;
     }
 
     /// @inheritdoc IAdapter
-    function estimate(uint16 centrifugeId, bytes calldata payload, uint256 gasLimit) external view returns (uint256) {
+    function estimate(uint16 centrifugeId, bytes calldata payload, uint256 gasLimit, uint256 gasValue)
+        external
+        view
+        returns (uint256)
+    {
         LayerZeroDestination memory destination = destinations[centrifugeId];
-        MessagingFee memory fee = endpoint.quote(_params(destination, payload, gasLimit), address(this));
+        MessagingFee memory fee = endpoint.quote(_params(destination, payload, gasLimit, gasValue), address(this));
         return fee.nativeFee;
     }
 
     /// @dev Generate message parameters
-    function _params(LayerZeroDestination memory destination, bytes calldata payload, uint256 gasLimit)
-        internal
-        pure
-        returns (MessagingParams memory)
-    {
+    function _params(
+        LayerZeroDestination memory destination,
+        bytes calldata payload,
+        uint256 gasLimit,
+        uint256 gasValue
+    ) internal pure returns (MessagingParams memory) {
         return MessagingParams(
             destination.layerZeroEid,
             destination.addr.toBytes32LeftPadded(),
             payload,
-            _options(gasLimit.toUint128()),
+            _options(gasLimit.toUint128(), gasValue.toUint128()),
             false
         );
     }
@@ -139,8 +146,9 @@ contract LayerZeroAdapter is Auth, ILayerZeroAdapter {
 
     // Based on
     // https://github.com/LayerZero-Labs/LayerZero-v2/blob/main/packages/layerzero-v2/evm/oapp/contracts/oapp/libs/OptionsBuilder.sol#L42
-    function _options(uint128 gasLimit) internal pure returns (bytes memory) {
-        bytes memory option = abi.encodePacked(gasLimit);
+    function _options(uint128 gasLimit, uint128 gasValue) internal pure returns (bytes memory) {
+        bytes memory option = abi.encodePacked(gasLimit, gasValue);
+        console.log(option.length);
         return abi.encodePacked(
             TYPE_3,
             WORKER_ID,

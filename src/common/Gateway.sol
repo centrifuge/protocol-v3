@@ -87,7 +87,7 @@ contract Gateway is Auth, Recoverable, IGateway {
     //----------------------------------------------------------------------------------------------
 
     /// @inheritdoc IMessageHandler
-    function handle(uint16 centrifugeId, bytes memory batch) public pauseable auth {
+    function handle(uint16 centrifugeId, bytes memory batch) public payable pauseable auth {
         IMessageProcessor processor_ = processor;
         bytes memory remaining = batch;
 
@@ -96,7 +96,7 @@ contract Gateway is Auth, Recoverable, IGateway {
             bytes memory message = remaining.slice(0, length);
             remaining = remaining.slice(length, remaining.length - length);
 
-            try processor_.handle(centrifugeId, message) {
+            try processor_.handle{value: msg.value}(centrifugeId, message) {
                 emit ExecuteMessage(centrifugeId, message);
             } catch (bytes memory err) {
                 bytes32 messageHash = keccak256(message);
@@ -107,12 +107,12 @@ contract Gateway is Auth, Recoverable, IGateway {
     }
 
     /// @inheritdoc IGateway
-    function retry(uint16 centrifugeId, bytes memory message) external pauseable {
+    function retry(uint16 centrifugeId, bytes memory message) external payable pauseable {
         bytes32 messageHash = keccak256(message);
         require(failedMessages[centrifugeId][messageHash] > 0, NotFailedMessage());
 
         failedMessages[centrifugeId][messageHash]--;
-        processor.handle(centrifugeId, message);
+        processor.handle{value: msg.value}(centrifugeId, message);
 
         emit ExecuteMessage(centrifugeId, message);
     }
@@ -153,7 +153,7 @@ contract Gateway is Auth, Recoverable, IGateway {
 
     function _send(uint16 centrifugeId, bytes memory batch, uint128 batchGasLimit) internal returns (bool succeeded) {
         PoolId poolId = processor.messagePoolIdPayment(batch);
-        uint256 cost = adapter.estimate(centrifugeId, batch, batchGasLimit);
+        uint256 cost = adapter.estimate(centrifugeId, batch, batchGasLimit, 0 /* TODO */ );
 
         // Ensure sufficient funds are available
         if (transactionRefund != address(0)) {
@@ -177,6 +177,7 @@ contract Gateway is Auth, Recoverable, IGateway {
             centrifugeId,
             batch,
             batchGasLimit,
+            0, /*TODO*/
             transactionRefund != address(0) ? transactionRefund : address(subsidy[poolId].refund)
         );
 
