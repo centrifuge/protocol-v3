@@ -41,6 +41,8 @@ import {FreezeOnly} from "../../../src/hooks/FreezeOnly.sol";
 import {FullRestrictions} from "../../../src/hooks/FullRestrictions.sol";
 import {RedemptionRestrictions} from "../../../src/hooks/RedemptionRestrictions.sol";
 
+import {QueueManager} from "../../../src/managers/QueueManager.sol";
+
 import {IdentityValuation} from "../../../src/valuations/IdentityValuation.sol";
 
 import "forge-std/Test.sol";
@@ -410,7 +412,8 @@ contract ForkTestSyncInvestments is ForkTestBase, VMLabeling {
             fullRestrictionsHook: FullRestrictions(IntegrationConstants.FULL_RESTRICTIONS_HOOK),
             redemptionRestrictionsHook: RedemptionRestrictions(IntegrationConstants.REDEMPTION_RESTRICTIONS_HOOK),
             usdc: ERC20(IntegrationConstants.PLUME_PUSD),
-            usdcId: Spoke(IntegrationConstants.SPOKE).assetToId(IntegrationConstants.PLUME_PUSD, 0)
+            usdcId: Spoke(IntegrationConstants.SPOKE).assetToId(IntegrationConstants.PLUME_PUSD, 0),
+            queueManager: QueueManager(address(0))
         });
 
         // Initialize pricing state

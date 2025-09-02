@@ -35,6 +35,8 @@ import {FreezeOnly} from "../../../src/hooks/FreezeOnly.sol";
 import {FullRestrictions} from "../../../src/hooks/FullRestrictions.sol";
 import {RedemptionRestrictions} from "../../../src/hooks/RedemptionRestrictions.sol";
 
+import {QueueManager} from "../../../src/managers/QueueManager.sol";
+
 import {IdentityValuation} from "../../../src/valuations/IdentityValuation.sol";
 
 import "forge-std/Test.sol";
@@ -96,7 +98,8 @@ contract ForkTestBase is EndToEndFlows {
             fullRestrictionsHook: FullRestrictions(IntegrationConstants.FULL_RESTRICTIONS_HOOK),
             redemptionRestrictionsHook: RedemptionRestrictions(IntegrationConstants.REDEMPTION_RESTRICTIONS_HOOK),
             usdc: ERC20(address(0)), // NOTE: Unused in fork tests in order to be chain agnostic
-            usdcId: newAssetId(0) // NOTE: Unused in fork tests in order to be chain agnostic
+            usdcId: newAssetId(0), // NOTE: Unused in fork tests in order to be chain agnostic
+            queueManager: QueueManager(address(0))
         });
 
         // Initialize pricing state
