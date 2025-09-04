@@ -11,6 +11,7 @@ import {D18} from "../../misc/types/D18.sol";
 import {PoolId} from "../../common/types/PoolId.sol";
 import {AssetId} from "../../common/types/AssetId.sol";
 import {AccountId} from "../../common/types/AccountId.sol";
+import {IAdapter} from "../../common/interfaces/IAdapter.sol";
 import {IGateway} from "../../common/interfaces/IGateway.sol";
 import {ShareClassId} from "../../common/types/ShareClassId.sol";
 import {IValuation} from "../../common/interfaces/IValuation.sol";
@@ -361,4 +362,21 @@ interface IHub {
 
     /// @notice Perform an accounting entries update.
     function updateJournal(PoolId poolId, JournalEntry[] memory debits, JournalEntry[] memory credits) external;
+
+    /// @notice Set adapters for a pool in another chain. Pool related message will go by these adapters.
+    ///         The adapters should already be deployed and wired.
+    /// @param centrifugeId chain where to perform the adapter configuration.
+    /// @param poolId pool associated to this configutation.
+    /// @param localAdapters Adapter addresses in this chain.
+    /// @param remoteAdapters Adapter addresses in the remote chain.
+    /// @param localRecoverer address used to recover messages in this chain.
+    /// @param remoteRecoverer address used to recover messages in the remote chain.
+    function setAdapters(
+        uint16 centrifugeId,
+        PoolId poolId,
+        IAdapter[] memory localAdapters,
+        bytes32[] memory remoteAdapters,
+        address localRecoverer,
+        bytes32 remoteRecoverer
+    ) external;
 }

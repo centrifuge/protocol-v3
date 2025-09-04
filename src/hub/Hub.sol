@@ -17,7 +17,9 @@ import {Multicall, IMulticall} from "../misc/Multicall.sol";
 import {PoolId} from "../common/types/PoolId.sol";
 import {AssetId} from "../common/types/AssetId.sol";
 import {AccountId} from "../common/types/AccountId.sol";
+import {IAdapter} from "../common/interfaces/IAdapter.sol";
 import {IGateway} from "../common/interfaces/IGateway.sol";
+import {IMultiAdapter} from "../common/interfaces/IMultiAdapter.sol";
 import {ShareClassId} from "../common/types/ShareClassId.sol";
 import {IValuation} from "../common/interfaces/IValuation.sol";
 import {ISnapshotHook} from "../common/interfaces/ISnapshotHook.sol";
@@ -41,6 +43,7 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
     IHubHelpers public hubHelpers;
     IAccounting public accounting;
     IHubRegistry public hubRegistry;
+    IMultiAdapter public multiAdapter;
     IHubMessageSender public sender;
     IShareClassManager public shareClassManager;
     IPoolEscrowFactory public poolEscrowFactory;
@@ -51,6 +54,7 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
         IHubHelpers hubHelpers_,
         IAccounting accounting_,
         IHubRegistry hubRegistry_,
+        IMultiAdapter multiAdapter_,
         IShareClassManager shareClassManager_,
         address deployer
     ) Auth(deployer) {
@@ -59,6 +63,7 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
         hubHelpers = hubHelpers_;
         accounting = accounting_;
         hubRegistry = hubRegistry_;
+        multiAdapter = multiAdapter_;
         shareClassManager = shareClassManager_;
     }
 
@@ -643,6 +648,23 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
         accounting.unlock(poolId);
         accounting.addJournal(debits, credits);
         accounting.lock();
+    }
+
+    /// @inheritdoc IHub
+    function setAdapters(
+        uint16 centrifugeId,
+        PoolId poolId,
+        IAdapter[] memory localAdapters,
+        bytes32[] memory remoteAdapters,
+        address localRecoverer,
+        bytes32 remoteRecoverer
+    ) external {
+        _isManager(poolId);
+
+        sender.sendInitiateSetPoolAdapters(centrifugeId, poolId, remoteAdapters, remoteRecoverer);
+
+        multiAdapter.setAdapters(centrifugeId, poolId, localAdapters);
+        multiAdapter.setRecoveryAddress(poolId, localRecoverer);
     }
 
     //----------------------------------------------------------------------------------------------

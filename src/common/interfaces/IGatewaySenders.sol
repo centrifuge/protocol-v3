@@ -5,10 +5,13 @@ import {D18} from "../../misc/types/D18.sol";
 
 import {PoolId} from "../types/PoolId.sol";
 import {AssetId} from "../types/AssetId.sol";
+import {IAdapter} from "../interfaces/IAdapter.sol";
 import {ShareClassId} from "../types/ShareClassId.sol";
 import {VaultUpdateKind} from "../libraries/MessageLib.sol";
 
 interface ILocalCentrifugeId {
+    error CanNotBeSentLocally();
+
     function localCentrifugeId() external view returns (uint16);
 }
 
@@ -127,6 +130,14 @@ interface IHubMessageSender is ILocalCentrifugeId {
         AssetId assetId,
         bytes calldata payload,
         uint128 extraGasLimit
+    ) external;
+
+    /// @notice Creates and send the message
+    function sendInitiateSetPoolAdapters(
+        uint16 centrifugeId,
+        PoolId poolId,
+        bytes32[] memory adapters,
+        bytes32 recoverer
     ) external;
 }
 

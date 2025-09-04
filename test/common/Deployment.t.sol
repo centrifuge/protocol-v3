@@ -73,6 +73,7 @@ contract CommonDeploymentTest is CommonDeployer, CommonDeploymentInputTest {
         // dependencies set correctly
         assertEq(address(messageProcessor.root()), address(root));
         assertEq(address(messageProcessor.tokenRecoverer()), address(tokenRecoverer));
+        assertEq(address(messageProcessor.multiAdapter()), address(multiAdapter));
     }
 
     function testMessageDispatcher(address nonWard) public view {
@@ -126,6 +127,7 @@ contract CommonDeploymentTest is CommonDeployer, CommonDeploymentInputTest {
 
         // dependencies set correctly
         assertEq(address(multiAdapter.gateway()), address(gateway));
+        assertEq(address(multiAdapter.messageProperties()), address(messageProcessor));
         assertEq(multiAdapter.localCentrifugeId(), CENTRIFUGE_ID);
     }
 

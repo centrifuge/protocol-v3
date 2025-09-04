@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {PoolId} from "./types/PoolId.sol";
 import {AssetId} from "./types/AssetId.sol";
 import {IRoot} from "./interfaces/IRoot.sol";
+import {IAdapter} from "./interfaces/IAdapter.sol";
 import {IGateway} from "./interfaces/IGateway.sol";
 import {ShareClassId} from "./types/ShareClassId.sol";
 import {IRequestManager} from "./interfaces/IRequestManager.sol";
@@ -529,6 +530,24 @@ contract MessageDispatcher is Auth, IMessageDispatcher {
                     assetId: assetId.raw(),
                     payload: payload
                 }).serialize()
+            );
+        }
+    }
+
+    /// @inheritdoc IHubMessageSender
+    function sendInitiateSetPoolAdapters(
+        uint16 centrifugeId,
+        PoolId poolId,
+        bytes32[] memory adapters,
+        bytes32 recoverer
+    ) external {
+        if (centrifugeId == localCentrifugeId) {
+            revert CanNotBeSentLocally();
+        } else {
+            gateway.send(
+                centrifugeId,
+                MessageLib.InitiateSetPoolAdapters({poolId: poolId.raw(), recoverer: recoverer, adapterList: adapters})
+                    .serialize()
             );
         }
     }
