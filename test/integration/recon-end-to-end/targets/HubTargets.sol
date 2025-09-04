@@ -294,7 +294,7 @@ abstract contract HubTargets is BaseTargetFunctions, Properties {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // EXECUTION HELPERS - Core logic for notify operations
+    // NOTIFY HELPERS
     // ═══════════════════════════════════════════════════════════════
 
     /// @dev Executes deposit claim with accurate cancellation tracking

@@ -165,6 +165,91 @@ abstract contract Setup is
     mapping(PoolId poolId => mapping(ShareClassId scId => mapping(AssetId assetId => uint256))) revokedHubShares;
     mapping(PoolId poolId => mapping(ShareClassId scId => uint256)) revokedBalanceSheetShares;
 
+    // ===============================
+    // SHARE QUEUE GHOST VARIABLES
+    // ===============================
+    mapping(bytes32 => int256) public ghost_netSharePosition; // Net share position (positive for issuance, negative for revocation)
+    mapping(bytes32 => uint256) public ghost_flipCount; // Count of position flips between issuance and revocation
+    mapping(bytes32 => uint256) public ghost_totalIssued; // Total shares issued cumulatively
+    mapping(bytes32 => uint256) public ghost_totalRevoked; // Total shares revoked cumulatively
+    mapping(bytes32 => uint256) public ghost_assetQueueDeposits; // Cumulative deposits in asset queue
+    mapping(bytes32 => uint256) public ghost_assetQueueWithdrawals; // Cumulative withdrawals in asset queue
+    mapping(bytes32 => uint256) public ghost_shareQueueNonce; // Track nonce progression for share queue
+    mapping(bytes32 => uint256) public ghost_assetCounterPerAsset; // For non-empty asset queues
+    mapping(bytes32 => uint256) public ghost_previousNonce; // To verify monotonicity
+    
+    // Before/after state tracking for share queues
+    mapping(bytes32 => uint128) public before_shareQueueDelta;
+    mapping(bytes32 => bool) public before_shareQueueIsPositive;
+    mapping(bytes32 => uint64) public before_nonce;
+
+    // ===============================
+    // RESERVE GHOST VARIABLES
+    // ===============================
+    mapping(bytes32 => uint256) public ghost_totalReserveOperations;
+    mapping(bytes32 => uint256) public ghost_totalUnreserveOperations;
+    mapping(bytes32 => uint256) public ghost_netReserved;
+    mapping(bytes32 => bool) public ghost_reserveOverflow;
+    mapping(bytes32 => bool) public ghost_reserveUnderflow;
+    mapping(bytes32 => uint256) public ghost_reserveIntegrityViolations;
+
+    // ===============================
+    // AUTHORIZATION GHOST VARIABLES
+    // ===============================
+    enum AuthLevel { NONE, MANAGER, WARD }
+    mapping(address => AuthLevel) public ghost_authorizationLevel;
+    mapping(bytes32 => uint256) public ghost_unauthorizedAttempts;
+    mapping(bytes32 => uint256) public ghost_privilegedOperationCount;
+    mapping(bytes32 => address) public ghost_lastAuthorizedCaller;
+    mapping(address => uint256) public ghost_authorizationChanges;
+    mapping(bytes32 => bool) public ghost_authorizationBypass;
+
+    // ===============================
+    // TRANSFER RESTRICTION GHOST VARIABLES
+    // ===============================
+    mapping(address => bool) public ghost_isEndorsedContract;
+    mapping(bytes32 => uint256) public ghost_endorsedTransferAttempts;
+    mapping(bytes32 => uint256) public ghost_blockedEndorsedTransfers;
+    mapping(bytes32 => uint256) public ghost_validTransferCount;
+    mapping(bytes32 => address) public ghost_lastTransferFrom;
+    mapping(address => uint256) public ghost_endorsementChanges;
+
+    // ===============================
+    // SUPPLY CONSISTENCY GHOST VARIABLES
+    // ===============================
+    mapping(bytes32 => uint256) public ghost_totalShareSupply;
+    mapping(bytes32 => mapping(address => uint256)) public ghost_individualBalances;
+    mapping(bytes32 => uint256) public ghost_supplyMintEvents;
+    mapping(bytes32 => uint256) public ghost_supplyBurnEvents;
+    mapping(bytes32 => bool) public ghost_supplyOperationOccurred;
+
+    // ===============================
+    // ASSET PROPORTIONALITY GHOST VARIABLES
+    // ===============================
+    // Deposit proportionality tracking
+    mapping(bytes32 => uint256) public ghost_cumulativeAssetsDeposited;
+    mapping(bytes32 => uint256) public ghost_cumulativeSharesIssuedForDeposits;
+    mapping(bytes32 => uint256) public ghost_depositExchangeRate;
+    mapping(bytes32 => bool) public ghost_depositProportionalityTracked;
+    
+    // Withdrawal proportionality tracking
+    mapping(bytes32 => uint256) public ghost_cumulativeAssetsWithdrawn;
+    mapping(bytes32 => uint256) public ghost_cumulativeSharesRevokedForWithdrawals;
+    mapping(bytes32 => bool) public ghost_withdrawalProportionalityTracked;
+
+    // ===============================
+    // ESCROW SUFFICIENCY TRACKING
+    // ===============================
+    mapping(bytes32 => uint256) public ghost_escrowReservedBalance;
+    mapping(bytes32 => uint256) public ghost_escrowAvailableBalance;
+    mapping(bytes32 => bool) public ghost_escrowSufficiencyTracked;
+    mapping(bytes32 => uint256) public ghost_failedWithdrawalAttempts;
+
+    // Pool tracking for property iteration
+    PoolId[] public activePools; // All created pools
+    mapping(PoolId => ShareClassId[]) public activeShareClasses; // Share classes per pool
+    AssetId[] public trackedAssets; // All registered assets
+
     int256 maxDepositGreater;
     int256 maxDepositLess;
     int256 maxRedeemGreater;
@@ -434,5 +519,148 @@ abstract contract Setup is
         // Rely messageDispatcher - these contracts rely on messageDispatcher, not the other way around
         spoke.rely(address(messageDispatcher));
         balanceSheet.rely(address(messageDispatcher));
+    }
+
+    // ===============================
+    // HELPER FUNCTIONS FOR SHARE QUEUE PROPERTIES
+    // ===============================
+
+    /// @notice Capture share queue state before operation
+    function _captureShareQueueState(PoolId poolId, ShareClassId scId) internal {
+        bytes32 key = _poolShareKey(poolId, scId);
+        
+        (
+            uint128 delta,
+            bool isPositive,
+            uint32 queuedAssetCounter,
+            uint64 nonce
+        ) = balanceSheet.queuedShares(poolId, scId);
+        
+        before_shareQueueDelta[key] = delta;
+        before_shareQueueIsPositive[key] = isPositive;
+        before_nonce[key] = nonce;
+    }
+
+    /// @notice Generate consistent key for pool-share class combination
+    function _poolShareKey(PoolId poolId, ShareClassId scId) internal pure returns (bytes32) {
+        return keccak256(abi.encode(poolId, scId));
+    }
+
+    /// @notice Track pools and share classes for property iteration
+    function _trackPoolAndShareClass(PoolId poolId, ShareClassId scId) internal {
+        // Check if pool is already tracked
+        bool poolExists = false;
+        for (uint256 i = 0; i < activePools.length; i++) {
+            if (PoolId.unwrap(activePools[i]) == PoolId.unwrap(poolId)) {
+                poolExists = true;
+                break;
+            }
+        }
+        if (!poolExists) {
+            activePools.push(poolId);
+        }
+
+        // Check if share class is already tracked for this pool
+        ShareClassId[] storage shareClasses = activeShareClasses[poolId];
+        bool scExists = false;
+        for (uint256 i = 0; i < shareClasses.length; i++) {
+            if (ShareClassId.unwrap(shareClasses[i]) == ShareClassId.unwrap(scId)) {
+                scExists = true;
+                break;
+            }
+        }
+        if (!scExists) {
+            shareClasses.push(scId);
+        }
+    }
+
+    /// @notice Track asset for property iteration
+    function _trackAsset(AssetId assetId) internal {
+        // Check if asset is already tracked
+        for (uint256 i = 0; i < trackedAssets.length; i++) {
+            if (AssetId.unwrap(trackedAssets[i]) == AssetId.unwrap(assetId)) {
+                return; // Already tracked
+            }
+        }
+        trackedAssets.push(assetId);
+    }
+
+    // Authorization helper functions
+    
+    /// @notice Track authorization for a caller performing privileged operation
+    function _trackAuthorization(address caller, PoolId poolId) internal {
+        bytes32 key = keccak256(abi.encode(poolId));
+        
+        // Check actual authorization
+        bool isWard = balanceSheet.wards(caller) == 1;
+        bool isManager = balanceSheet.manager(poolId, caller);
+        
+        // Update ghost tracking
+        if (isWard) {
+            ghost_authorizationLevel[caller] = AuthLevel.WARD;
+        } else if (isManager) {
+            ghost_authorizationLevel[caller] = AuthLevel.MANAGER;
+        } else {
+            ghost_authorizationLevel[caller] = AuthLevel.NONE;
+            ghost_unauthorizedAttempts[key]++;
+        }
+        
+        if (isWard || isManager) {
+            ghost_privilegedOperationCount[key]++;
+            ghost_lastAuthorizedCaller[key] = caller;
+        }
+    }
+    
+    /// @notice Check and record authorization level changes
+    function _checkAndRecordAuthChange(address user) internal {
+        AuthLevel oldLevel = ghost_authorizationLevel[user];
+        AuthLevel newLevel = AuthLevel.NONE;
+        
+        // Check all pools for manager permissions - simplified for testing
+        // In a full implementation, this would check all tracked pools
+        if (balanceSheet.wards(user) == 1) {
+            newLevel = AuthLevel.WARD;
+        } else {
+            // Check if user is manager for any tracked pool
+            for (uint256 i = 0; i < activePools.length; i++) {
+                if (balanceSheet.manager(activePools[i], user)) {
+                    newLevel = AuthLevel.MANAGER;
+                    break;
+                }
+            }
+        }
+        
+        if (oldLevel != newLevel) {
+            ghost_authorizationChanges[user]++;
+            ghost_authorizationLevel[user] = newLevel;
+        }
+    }
+
+    // Endorsement helper functions
+    
+    /// @dev Check if an address is an endorsed contract
+    function _isEndorsedContract(address addr) internal view returns (bool) {
+        // Check if address is endorsed by root
+        return root.endorsed(addr);
+    }
+
+    /// @dev Track transfer attempts for endorsement validation
+    function _trackEndorsedTransfer(address from, address to, PoolId poolId, ShareClassId scId) internal {
+        bytes32 key = keccak256(abi.encode(poolId, scId));
+        
+        // Track transfer details
+        ghost_lastTransferFrom[key] = from;
+        
+        // Check if from is endorsed
+        if (_isEndorsedContract(from)) {
+            ghost_endorsedTransferAttempts[key]++;
+            ghost_isEndorsedContract[from] = true;
+        }
+        
+        // Track system contracts as implicitly endorsed
+        if (from == address(balanceSheet) || from == address(spoke) || from == address(hub)) {
+            ghost_isEndorsedContract[from] = true;
+            ghost_endorsedTransferAttempts[key]++;
+        }
     }
 }
