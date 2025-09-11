@@ -11,6 +11,7 @@ import {PoolId} from "../../../src/common/types/PoolId.sol";
 import {MessageLib} from "../../../src/common/libraries/MessageLib.sol";
 import {PricingLib} from "../../../src/common/libraries/PricingLib.sol";
 import {ShareClassId} from "../../../src/common/types/ShareClassId.sol";
+import {IHubRequestManager} from "../../../src/hub/interfaces/IHubRequestManager.sol";
 import {VaultUpdateKind} from "../../../src/common/libraries/MessageLib.sol";
 import {RequestCallbackMessageLib} from "../../../src/common/libraries/RequestCallbackMessageLib.sol";
 
@@ -37,7 +38,9 @@ contract TestCases is BaseTest {
         hub.addShareClass(poolId, SC_NAME, SC_SYMBOL, SC_SALT);
         hub.notifyPool{value: GAS}(poolId, CHAIN_CV);
         hub.notifyShareClass{value: GAS}(poolId, scId, CHAIN_CV, SC_HOOK);
-        hub.setRequestManager{value: GAS}(poolId, scId, USDC_C2, ASYNC_REQUEST_MANAGER.toBytes32());
+        hub.setRequestManager{value: GAS}(
+            poolId, scId, USDC_C2, ASYNC_REQUEST_MANAGER.toBytes32(), ASYNC_REQUEST_MANAGER.toBytes32()
+        );
         hub.updateBalanceSheetManager{value: GAS}(CHAIN_CV, poolId, ASYNC_REQUEST_MANAGER.toBytes32(), true);
         hub.updateBalanceSheetManager{value: GAS}(CHAIN_CV, poolId, SYNC_REQUEST_MANAGER.toBytes32(), true);
 
@@ -109,11 +112,12 @@ contract TestCases is BaseTest {
         cv.requestDeposit(poolId, scId, USDC_C2, INVESTOR, INVESTOR_AMOUNT);
 
         vm.startPrank(FM);
+        IHubRequestManager requestManager = IHubRequestManager(hubRegistry.dependency(poolId, "requestManager"));
         hub.approveDeposits{value: GAS}(
-            poolId, scId, USDC_C2, shareClassManager.nowDepositEpoch(scId, USDC_C2), APPROVED_INVESTOR_AMOUNT
+            poolId, scId, USDC_C2, requestManager.nowDepositEpoch(scId, USDC_C2), APPROVED_INVESTOR_AMOUNT
         );
         hub.issueShares{value: GAS}(
-            poolId, scId, USDC_C2, shareClassManager.nowIssueEpoch(scId, USDC_C2), NAV_PER_SHARE, SHARE_HOOK_GAS
+            poolId, scId, USDC_C2, requestManager.nowIssueEpoch(scId, USDC_C2), NAV_PER_SHARE, SHARE_HOOK_GAS
         );
 
         // Queue cancellation request which is fulfilled when claiming
@@ -122,7 +126,7 @@ contract TestCases is BaseTest {
         vm.startPrank(ANY);
         vm.deal(ANY, GAS);
         hub.notifyDeposit{value: GAS}(
-            poolId, scId, USDC_C2, INVESTOR, shareClassManager.maxDepositClaims(scId, INVESTOR, USDC_C2)
+            poolId, scId, USDC_C2, INVESTOR, requestManager.maxDepositClaims(scId, INVESTOR, USDC_C2)
         );
 
         MessageLib.RequestCallback memory m0 = MessageLib.deserializeRequestCallback(cv.popMessage());
@@ -175,11 +179,10 @@ contract TestCases is BaseTest {
         );
 
         vm.startPrank(FM);
-        hub.approveRedeems(
-            poolId, scId, USDC_C2, shareClassManager.nowRedeemEpoch(scId, USDC_C2), APPROVED_SHARE_AMOUNT
-        );
+        IHubRequestManager requestManager = IHubRequestManager(hubRegistry.dependency(poolId, "requestManager"));
+        hub.approveRedeems(poolId, scId, USDC_C2, requestManager.nowRedeemEpoch(scId, USDC_C2), APPROVED_SHARE_AMOUNT);
         hub.revokeShares{value: GAS}(
-            poolId, scId, USDC_C2, shareClassManager.nowRevokeEpoch(scId, USDC_C2), NAV_PER_SHARE, SHARE_HOOK_GAS
+            poolId, scId, USDC_C2, requestManager.nowRevokeEpoch(scId, USDC_C2), NAV_PER_SHARE, SHARE_HOOK_GAS
         );
 
         // Queue cancellation request which is fulfilled when claiming
@@ -188,7 +191,7 @@ contract TestCases is BaseTest {
         vm.startPrank(ANY);
         vm.deal(ANY, GAS);
         hub.notifyRedeem{value: GAS}(
-            poolId, scId, USDC_C2, INVESTOR, shareClassManager.maxRedeemClaims(scId, INVESTOR, USDC_C2)
+            poolId, scId, USDC_C2, INVESTOR, requestManager.maxRedeemClaims(scId, INVESTOR, USDC_C2)
         );
 
         MessageLib.RequestCallback memory m0 = MessageLib.deserializeRequestCallback(cv.popMessage());

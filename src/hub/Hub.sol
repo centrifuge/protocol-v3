@@ -7,6 +7,7 @@ import {IHubRegistry} from "./interfaces/IHubRegistry.sol";
 import {IHub, VaultUpdateKind} from "./interfaces/IHub.sol";
 import {IAccounting, JournalEntry} from "./interfaces/IAccounting.sol";
 import {IShareClassManager} from "./interfaces/IShareClassManager.sol";
+import {IHubRequestManager} from "./interfaces/IHubRequestManager.sol";
 
 import {Auth} from "../misc/Auth.sol";
 import {D18} from "../misc/types/D18.sol";
@@ -170,6 +171,19 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
         }
     }
 
+    /// @inheritdoc IHub
+    function requestCallback(
+        PoolId poolId,
+        ShareClassId scId,
+        AssetId assetId,
+        bytes calldata payload,
+        uint128 gasLimit
+    ) external {
+        // TODO: verify msg.sender is the hub request manager
+        _auth();
+        sender.sendRequestCallback(poolId, scId, assetId, payload, gasLimit);
+    }
+
     //----------------------------------------------------------------------------------------------
     // Pool admin methods
     //----------------------------------------------------------------------------------------------
@@ -295,14 +309,20 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
     }
 
     /// @inheritdoc IHub
-    function setRequestManager(PoolId poolId, ShareClassId scId, AssetId assetId, bytes32 manager)
-        external
-        payable
-        payTransaction
-    {
+    function setRequestManager(
+        PoolId poolId,
+        ShareClassId scId,
+        AssetId assetId,
+        bytes32 hubManager,
+        bytes32 spokeManager
+    ) external payable payTransaction {
         _isManager(poolId);
 
-        sender.sendSetRequestManager(poolId, scId, assetId, manager);
+        hubRegistry.updateDependency(poolId, "requestManager", address(uint160(uint256(hubManager))));
+
+        sender.sendSetRequestManager(poolId, scId, assetId, spokeManager);
+
+        emit SetRequestManager(poolId, scId, assetId, hubManager, spokeManager);
     }
 
     /// @inheritdoc IHub
@@ -337,9 +357,8 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
     ) external payable payTransaction returns (uint128 pendingAssetAmount, uint128 approvedPoolAmount) {
         _isManager(poolId);
         D18 pricePoolPerAsset = hubHelpers.pricePoolPerAsset(poolId, scId, depositAssetId);
-        (pendingAssetAmount, approvedPoolAmount) = shareClassManager.approveDeposits(
-            poolId, scId, depositAssetId, nowDepositEpochId, approvedAssetAmount, pricePoolPerAsset
-        );
+        (pendingAssetAmount, approvedPoolAmount) = IHubRequestManager(hubRegistry.dependency(poolId, "requestManager"))
+            .approveDeposits(poolId, scId, depositAssetId, nowDepositEpochId, approvedAssetAmount, pricePoolPerAsset);
 
         sender.sendRequestCallback(
             poolId,
@@ -361,8 +380,9 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
         _isManager(poolId);
 
         D18 price = hubHelpers.pricePoolPerAsset(poolId, scId, payoutAssetId);
-        (pendingShareAmount) =
-            shareClassManager.approveRedeems(poolId, scId, payoutAssetId, nowRedeemEpochId, approvedShareAmount, price);
+        (pendingShareAmount) = IHubRequestManager(hubRegistry.dependency(poolId, "requestManager")).approveRedeems(
+            poolId, scId, payoutAssetId, nowRedeemEpochId, approvedShareAmount, price
+        );
     }
 
     /// @inheritdoc IHub
@@ -381,8 +401,9 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
     {
         _isManager(poolId);
 
-        (issuedShareAmount, depositAssetAmount, depositPoolAmount) =
-            shareClassManager.issueShares(poolId, scId, depositAssetId, nowIssueEpochId, navPoolPerShare);
+        (issuedShareAmount, depositAssetAmount, depositPoolAmount) = IHubRequestManager(
+            hubRegistry.dependency(poolId, "requestManager")
+        ).issueShares(poolId, scId, depositAssetId, nowIssueEpochId, navPoolPerShare);
 
         sender.sendRequestCallback(
             poolId,
@@ -409,8 +430,9 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
     {
         _isManager(poolId);
 
-        (revokedShareAmount, payoutAssetAmount, payoutPoolAmount) =
-            shareClassManager.revokeShares(poolId, scId, payoutAssetId, nowRevokeEpochId, navPoolPerShare);
+        (revokedShareAmount, payoutAssetAmount, payoutPoolAmount) = IHubRequestManager(
+            hubRegistry.dependency(poolId, "requestManager")
+        ).revokeShares(poolId, scId, payoutAssetId, nowRevokeEpochId, navPoolPerShare);
 
         sender.sendRequestCallback(
             poolId,
@@ -430,8 +452,8 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
     {
         _isManager(poolId);
 
-        uint128 cancelledAssetAmount =
-            shareClassManager.forceCancelDepositRequest(poolId, scId, investor, depositAssetId);
+        uint128 cancelledAssetAmount = IHubRequestManager(hubRegistry.dependency(poolId, "requestManager"))
+            .forceCancelDepositRequest(poolId, scId, investor, depositAssetId);
 
         // Cancellation might have been queued such that it will be executed in the future during claiming
         if (cancelledAssetAmount > 0) {
@@ -453,7 +475,8 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
     {
         _isManager(poolId);
 
-        uint128 cancelledShareAmount = shareClassManager.forceCancelRedeemRequest(poolId, scId, investor, payoutAssetId);
+        uint128 cancelledShareAmount = IHubRequestManager(hubRegistry.dependency(poolId, "requestManager"))
+            .forceCancelRedeemRequest(poolId, scId, investor, payoutAssetId);
 
         // Cancellation might have been queued such that it will be executed in the future during claiming
         if (cancelledShareAmount > 0) {
