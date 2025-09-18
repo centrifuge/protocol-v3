@@ -14,6 +14,7 @@ import {MAX_MESSAGE_COST} from "../../../src/common/interfaces/IGasService.sol";
 import {HubDeployer, HubActionBatcher, CommonInput} from "../../../script/HubDeployer.s.sol";
 
 import {MockVaults} from "../mocks/MockVaults.sol";
+import {MockRequestManager} from "./mocks/MockRequestManager.sol";
 
 import "forge-std/Test.sol";
 
@@ -54,6 +55,7 @@ contract BaseTest is HubDeployer, Test {
 
     MockVaults cv;
     MockValuation valuation;
+    MockRequestManager mockRequestManager;
 
     function _mockStuff(HubActionBatcher batcher) private {
         vm.startPrank(address(batcher));
@@ -64,6 +66,9 @@ contract BaseTest is HubDeployer, Test {
         multiAdapter.setAdapters(CHAIN_CV, PoolId.wrap(0), adapters, uint8(adapters.length), uint8(adapters.length));
 
         valuation = new MockValuation(hubRegistry);
+
+        // Deploy mock request manager (pool-specific setup done in individual tests)
+        mockRequestManager = new MockRequestManager();
 
         vm.stopPrank();
     }

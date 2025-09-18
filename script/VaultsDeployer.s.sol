@@ -11,6 +11,7 @@ import {Spoke} from "../src/spoke/Spoke.sol";
 import {SyncManager} from "../src/vaults/SyncManager.sol";
 import {VaultRouter} from "../src/vaults/VaultRouter.sol";
 import {AsyncRequestManager} from "../src/vaults/AsyncRequestManager.sol";
+import {HubRequestManager} from "../src/vaults/HubRequestManager.sol";
 import {AsyncVaultFactory} from "../src/vaults/factories/AsyncVaultFactory.sol";
 import {SyncDepositVaultFactory} from "../src/vaults/factories/SyncDepositVaultFactory.sol";
 
@@ -19,6 +20,7 @@ import "forge-std/Script.sol";
 struct VaultsReport {
     SpokeReport spoke;
     SyncManager syncManager;
+    HubRequestManager hubRequestManager;
     AsyncRequestManager asyncRequestManager;
     Escrow routerEscrow;
     Escrow globalEscrow;
@@ -43,6 +45,7 @@ contract VaultsActionBatcher is SpokeActionBatcher {
         // Rely Root
         report.vaultRouter.rely(address(report.spoke.common.root));
         report.asyncRequestManager.rely(address(report.spoke.common.root));
+        report.hubRequestManager.rely(address(report.spoke.common.root));
         report.syncManager.rely(address(report.spoke.common.root));
         report.routerEscrow.rely(address(report.spoke.common.root));
         report.globalEscrow.rely(address(report.spoke.common.root));
@@ -75,6 +78,7 @@ contract VaultsActionBatcher is SpokeActionBatcher {
         report.asyncVaultFactory.deny(address(this));
         report.syncDepositVaultFactory.deny(address(this));
         report.asyncRequestManager.deny(address(this));
+        report.hubRequestManager.deny(address(this));
         report.syncManager.deny(address(this));
         report.routerEscrow.deny(address(this));
         report.globalEscrow.deny(address(this));
@@ -85,6 +89,7 @@ contract VaultsActionBatcher is SpokeActionBatcher {
 contract VaultsDeployer is SpokeDeployer {
     SyncManager public syncManager;
     AsyncRequestManager public asyncRequestManager;
+    HubRequestManager public hubRequestManager;
     Escrow public routerEscrow;
     Escrow public globalEscrow;
     VaultRouter public vaultRouter;
@@ -96,7 +101,16 @@ contract VaultsDeployer is SpokeDeployer {
         _postDeployVaults(batcher);
     }
 
+    function deployVaults(CommonInput memory input, address _hubRegistry, VaultsActionBatcher batcher) public {
+        _preDeployVaults(input, _hubRegistry, batcher);
+        _postDeployVaults(batcher);
+    }
+
     function _preDeployVaults(CommonInput memory input, VaultsActionBatcher batcher) internal {
+        _preDeployVaults(input, address(0), batcher);
+    }
+
+    function _preDeployVaults(CommonInput memory input, address _hubRegistry, VaultsActionBatcher batcher) internal {
         _preDeploySpoke(input, batcher);
 
         routerEscrow = Escrow(
@@ -111,6 +125,13 @@ contract VaultsDeployer is SpokeDeployer {
             create3(
                 generateSalt("asyncRequestManager-2"),
                 abi.encodePacked(type(AsyncRequestManager).creationCode, abi.encode(globalEscrow, batcher))
+            )
+        );
+
+        hubRequestManager = HubRequestManager(
+            create3(
+                generateSalt("hubRequestManager"),
+                abi.encodePacked(type(HubRequestManager).creationCode, abi.encode(_hubRegistry, batcher))
             )
         );
 
@@ -151,6 +172,9 @@ contract VaultsDeployer is SpokeDeployer {
         register("routerEscrow", address(routerEscrow));
         register("globalEscrow", address(globalEscrow));
         register("asyncRequestManager", address(asyncRequestManager));
+        if (_hubRegistry != address(0)) {
+            register("hubRequestManager", address(hubRequestManager));
+        }
         register("syncManager", address(syncManager));
         register("asyncVaultFactory", address(asyncVaultFactory));
         register("syncDepositVaultFactory", address(syncDepositVaultFactory));
@@ -171,6 +195,7 @@ contract VaultsDeployer is SpokeDeployer {
         return VaultsReport(
             _spokeReport(),
             syncManager,
+            hubRequestManager,
             asyncRequestManager,
             routerEscrow,
             globalEscrow,
