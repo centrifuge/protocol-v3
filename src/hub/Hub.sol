@@ -18,7 +18,6 @@ import {PoolId} from "../common/types/PoolId.sol";
 import {AssetId} from "../common/types/AssetId.sol";
 import {AccountId} from "../common/types/AccountId.sol";
 import {IAdapter} from "../common/interfaces/IAdapter.sol";
-import {IGateway} from "../common/interfaces/IGateway.sol";
 import {ShareClassId} from "../common/types/ShareClassId.sol";
 import {IValuation} from "../common/interfaces/IValuation.sol";
 import {IMultiAdapter} from "../common/interfaces/IMultiAdapter.sol";
@@ -38,7 +37,6 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
     using MathLib for uint256;
     using RequestCallbackMessageLib for *;
 
-    IGateway public gateway;
     IHoldings public holdings;
     IHubHelpers public hubHelpers;
     IAccounting public accounting;
@@ -49,7 +47,6 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
     IPoolEscrowFactory public poolEscrowFactory;
 
     constructor(
-        IGateway gateway_,
         IHoldings holdings_,
         IHubHelpers hubHelpers_,
         IAccounting accounting_,
@@ -58,7 +55,6 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
         IShareClassManager shareClassManager_,
         address deployer
     ) Auth(deployer) {
-        gateway = gateway_;
         holdings = holdings_;
         hubHelpers = hubHelpers_;
         accounting = accounting_;
@@ -78,25 +74,9 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
         if (what == "sender") sender = IHubMessageSender(data);
         else if (what == "holdings") holdings = IHoldings(data);
         else if (what == "shareClassManager") shareClassManager = IShareClassManager(data);
-        else if (what == "gateway") gateway = IGateway(data);
         else if (what == "poolEscrowFactory") poolEscrowFactory = IPoolEscrowFactory(data);
         else revert FileUnrecognizedParam();
         emit File(what, data);
-    }
-
-    /// @inheritdoc IMulticall
-    /// @notice performs a multicall but all messages sent in the process will be batched
-    function multicall(bytes[] calldata data) public payable override {
-        bool wasBatching = gateway.isBatching();
-        if (!wasBatching) {
-            gateway.startBatching();
-        }
-
-        super.multicall(data);
-
-        if (!wasBatching) {
-            gateway.endBatching();
-        }
     }
 
     /// @inheritdoc IHubGuardianActions
@@ -107,7 +87,7 @@ contract Hub is Multicall, Auth, Recoverable, IHub, IHubGatewayHandler, IHubGuar
         hubRegistry.registerPool(poolId, admin, currency);
 
         IPoolEscrow escrow = poolEscrowFactory.newEscrow(poolId);
-        gateway.setRefundAddress(poolId, escrow);
+        sender.gateway().setRefundAddress(poolId, escrow);
     }
 
     //----------------------------------------------------------------------------------------------

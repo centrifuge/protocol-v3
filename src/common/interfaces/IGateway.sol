@@ -117,10 +117,10 @@ interface IGateway is IMessageHandler, IMessageSender, IRecoverable {
     function addUnpaidMessage(uint16 centrifugeId, bytes memory message) external;
 
     /// @notice Initialize batching message
-    function startBatching() external;
+    function startBatching(PoolId poolId) external;
 
     /// @notice Finalize batching messages and send the resulting batch message
-    function endBatching() external;
+    function endBatching(PoolId poolId) external returns (uint256 cost);
 
     /// @notice Returns the current gateway batching level.
     function isBatching() external view returns (bool);

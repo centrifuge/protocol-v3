@@ -47,6 +47,7 @@ contract Gateway is Auth, Recoverable, IGateway {
 
     // Outbound & payments
     bool public transient isBatching;
+    PoolId public transient batchingPoolId;
     uint128 public transient extraGasLimit;
     mapping(PoolId => Funds) public subsidy;
     mapping(uint16 centrifugeId => mapping(PoolId => bool)) public isOutgoingBlocked;
@@ -154,16 +155,17 @@ contract Gateway is Auth, Recoverable, IGateway {
         extraGasLimit = 0;
 
         if (isBatching) {
-            bytes32 batchSlot = _outboundBatchSlot(centrifugeId, poolId);
+            require(batchingPoolId == poolId, "TODO");
+            bytes32 batchSlot = _outboundBatchSlot(centrifugeId);
             bytes memory previousMessage = TransientBytesLib.get(batchSlot);
 
-            bytes32 gasLimitSlot = _gasLimitSlot(centrifugeId, poolId);
+            bytes32 gasLimitSlot = _gasLimitSlot(centrifugeId);
             uint128 newGasLimit = gasLimitSlot.tloadUint128() + gasLimit;
             require(newGasLimit <= gasService.maxBatchGasLimit(centrifugeId), ExceedsMaxGasLimit());
             gasLimitSlot.tstore(uint256(newGasLimit));
 
             if (previousMessage.length == 0) {
-                TransientArrayLib.push(BATCH_LOCATORS_SLOT, _encodeLocator(centrifugeId, poolId));
+                TransientArrayLib.push(BATCH_LOCATORS_SLOT, _encodeLocator(centrifugeId));
             }
 
             TransientBytesLib.append(batchSlot, message);
@@ -281,27 +283,31 @@ contract Gateway is Auth, Recoverable, IGateway {
     }
 
     /// @inheritdoc IGateway
-    function startBatching() external auth {
+    function startBatching(PoolId poolId) external onlyManager(poolId) {
+        require(!isBatching, "TODO");
         isBatching = true;
+        batchingPoolId = poolId;
     }
 
     /// @inheritdoc IGateway
-    function endBatching() external auth {
+    function endBatching(PoolId poolId) external onlyManager(poolId) returns (uint256 cost) {
         require(isBatching, NoBatched());
+        require(batchingPoolId == poolId, "TODO");
+
         bytes32[] memory locators = TransientArrayLib.getBytes32(BATCH_LOCATORS_SLOT);
 
         isBatching = false;
         TransientArrayLib.clear(BATCH_LOCATORS_SLOT);
 
         for (uint256 i; i < locators.length; i++) {
-            (uint16 centrifugeId, PoolId poolId) = _parseLocator(locators[i]);
-            bytes32 outboundBatchSlot = _outboundBatchSlot(centrifugeId, poolId);
-            uint128 gasLimit = _gasLimitSlot(centrifugeId, poolId).tloadUint128();
+            uint16 centrifugeId = _parseLocator(locators[i]);
+            bytes32 outboundBatchSlot = _outboundBatchSlot(centrifugeId);
+            uint128 gasLimit = _gasLimitSlot(centrifugeId).tloadUint128();
 
-            _send(centrifugeId, TransientBytesLib.get(outboundBatchSlot), gasLimit);
+            cost += _send(centrifugeId, TransientBytesLib.get(outboundBatchSlot), gasLimit);
 
             TransientBytesLib.clear(outboundBatchSlot);
-            _gasLimitSlot(centrifugeId, poolId).tstore(uint256(0));
+            _gasLimitSlot(centrifugeId).tstore(uint256(0));
         }
     }
 
@@ -315,21 +321,20 @@ contract Gateway is Auth, Recoverable, IGateway {
     // Helpers
     //----------------------------------------------------------------------------------------------
 
-    function _encodeLocator(uint16 centrifugeId, PoolId poolId) internal pure returns (bytes32) {
-        return bytes32(abi.encodePacked(bytes2(centrifugeId), bytes8(poolId.raw())));
+    function _encodeLocator(uint16 centrifugeId) internal pure returns (bytes32) {
+        return bytes32(bytes2(centrifugeId));
     }
 
-    function _parseLocator(bytes32 locator) internal pure returns (uint16 centrifugeId, PoolId poolId) {
-        centrifugeId = uint16(bytes2(locator));
-        poolId = PoolId.wrap(uint64(bytes8(locator << 16)));
+    function _parseLocator(bytes32 locator) internal pure returns (uint16 centrifugeId) {
+        return uint16(bytes2(locator));
     }
 
-    function _gasLimitSlot(uint16 centrifugeId, PoolId poolId) internal pure returns (bytes32) {
-        return keccak256(abi.encode("batchGasLimit", centrifugeId, poolId));
+    function _gasLimitSlot(uint16 centrifugeId) internal pure returns (bytes32) {
+        return keccak256(abi.encode("batchGasLimit", centrifugeId));
     }
 
-    function _outboundBatchSlot(uint16 centrifugeId, PoolId poolId) internal pure returns (bytes32) {
-        return keccak256(abi.encode("outboundBatch", centrifugeId, poolId));
+    function _outboundBatchSlot(uint16 centrifugeId) internal pure returns (bytes32) {
+        return keccak256(abi.encode("outboundBatch", centrifugeId));
     }
 
     function subsidizedValue(PoolId poolId) external view returns (uint256) {
