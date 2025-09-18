@@ -98,18 +98,20 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
         uint128 amount,
         uint128 remoteExtraGasLimit
     ) external payable payTransaction protected {
-        IShareToken share = IShareToken(shareToken(poolId, scId));
-        require(centrifugeId != sender.localCentrifugeId(), LocalTransferNotAllowed());
-        require(
-            share.checkTransferRestriction(msg.sender, address(uint160(centrifugeId)), amount),
-            CrossChainTransferNotAllowed()
-        );
+        _crosschainTransferShares(centrifugeId, poolId, scId, receiver, amount, 0, remoteExtraGasLimit);
+    }
 
-        share.authTransferFrom(msg.sender, msg.sender, address(this), amount);
-        share.burn(address(this), amount);
-
-        emit InitiateTransferShares(centrifugeId, poolId, scId, msg.sender, receiver, amount);
-        sender.sendInitiateTransferShares(centrifugeId, poolId, scId, receiver, amount, remoteExtraGasLimit);
+    /// @inheritdoc ISpoke
+    function crosschainTransferShares(
+        uint16 centrifugeId,
+        PoolId poolId,
+        ShareClassId scId,
+        bytes32 receiver,
+        uint128 amount,
+        uint128 extraGasLimit,
+        uint128 remoteExtraGasLimit
+    ) external payable payTransaction protected {
+        _crosschainTransferShares(centrifugeId, poolId, scId, receiver, amount, extraGasLimit, remoteExtraGasLimit);
     }
 
     /// @inheritdoc ISpoke
@@ -545,5 +547,30 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
     {
         shareClass_ = shareClass[poolId][scId];
         require(address(shareClass_.shareToken) != address(0), ShareTokenDoesNotExist());
+    }
+
+    function _crosschainTransferShares(
+        uint16 centrifugeId,
+        PoolId poolId,
+        ShareClassId scId,
+        bytes32 receiver,
+        uint128 amount,
+        uint128 extraGasLimit,
+        uint128 remoteExtraGasLimit
+    ) internal {
+        IShareToken share = IShareToken(shareToken(poolId, scId));
+        require(centrifugeId != sender.localCentrifugeId(), LocalTransferNotAllowed());
+        require(
+            share.checkTransferRestriction(msg.sender, address(uint160(centrifugeId)), amount),
+            CrossChainTransferNotAllowed()
+        );
+
+        share.authTransferFrom(msg.sender, msg.sender, address(this), amount);
+        share.burn(address(this), amount);
+
+        emit InitiateTransferShares(centrifugeId, poolId, scId, msg.sender, receiver, amount);
+        sender.sendInitiateTransferShares(
+            centrifugeId, poolId, scId, receiver, amount, extraGasLimit, remoteExtraGasLimit
+        );
     }
 }
