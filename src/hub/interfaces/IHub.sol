@@ -12,7 +12,6 @@ import {PoolId} from "../../common/types/PoolId.sol";
 import {AssetId} from "../../common/types/AssetId.sol";
 import {AccountId} from "../../common/types/AccountId.sol";
 import {IAdapter} from "../../common/interfaces/IAdapter.sol";
-import {IGateway} from "../../common/interfaces/IGateway.sol";
 import {ShareClassId} from "../../common/types/ShareClassId.sol";
 import {IValuation} from "../../common/interfaces/IValuation.sol";
 import {VaultUpdateKind} from "../../common/libraries/MessageLib.sol";
@@ -81,7 +80,6 @@ interface IHub {
     /// @notice Dispatched when an invalid combination of account IDs is passed.
     error InvalidAccountCombination();
 
-    function gateway() external view returns (IGateway);
     function holdings() external view returns (IHoldings);
     function accounting() external view returns (IAccounting);
     function hubRegistry() external view returns (IHubRegistry);

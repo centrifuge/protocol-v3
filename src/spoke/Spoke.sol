@@ -20,7 +20,6 @@ import {IERC6909MetadataExt} from "../misc/interfaces/IERC6909.sol";
 import {ReentrancyProtection} from "../misc/ReentrancyProtection.sol";
 
 import {PoolId} from "../common/types/PoolId.sol";
-import {IGateway} from "../common/interfaces/IGateway.sol";
 import {ShareClassId} from "../common/types/ShareClassId.sol";
 import {newAssetId, AssetId} from "../common/types/AssetId.sol";
 import {IPoolEscrow} from "../common/interfaces/IPoolEscrow.sol";
@@ -43,7 +42,6 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
     uint8 internal constant MIN_DECIMALS = 2;
     uint8 internal constant MAX_DECIMALS = 18;
 
-    IGateway public gateway;
     ITokenFactory public tokenFactory;
     ISpokeMessageSender public sender;
     IPoolEscrowFactory public poolEscrowFactory;
@@ -71,8 +69,7 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
 
     /// @inheritdoc ISpoke
     function file(bytes32 what, address data) external auth {
-        if (what == "gateway") gateway = IGateway(data);
-        else if (what == "sender") sender = ISpokeMessageSender(data);
+        if (what == "sender") sender = ISpokeMessageSender(data);
         else if (what == "tokenFactory") tokenFactory = ITokenFactory(data);
         else if (what == "poolEscrowFactory") poolEscrowFactory = IPoolEscrowFactory(data);
         else revert FileUnrecognizedParam();
@@ -177,7 +174,7 @@ contract Spoke is Auth, Recoverable, ReentrancyProtection, ISpoke, ISpokeGateway
         IPoolEscrow escrow = poolEscrowFactory.escrow(poolId);
         if (address(escrow).code.length == 0) {
             poolEscrowFactory.newEscrow(poolId);
-            gateway.setRefundAddress(poolId, escrow);
+            sender.gateway().setRefundAddress(poolId, escrow);
         }
 
         emit AddPool(poolId);

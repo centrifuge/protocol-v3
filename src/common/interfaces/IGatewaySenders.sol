@@ -7,11 +7,14 @@ import {PoolId} from "../types/PoolId.sol";
 import {AssetId} from "../types/AssetId.sol";
 import {ShareClassId} from "../types/ShareClassId.sol";
 import {VaultUpdateKind} from "../libraries/MessageLib.sol";
+import {IGateway} from "./IGateway.sol";
 
 interface ILocalCentrifugeId {
     error CannotBeSentLocally();
 
     function localCentrifugeId() external view returns (uint16);
+
+    function gateway() external returns (IGateway);
 }
 
 /// @notice Interface for dispatch-only gateway
