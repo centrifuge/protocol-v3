@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity >=0.5.0;
 
+import {IAdapter} from "./IAdapter.sol";
+import {IGasService} from "./IGasService.sol";
 import {IMessageHandler} from "./IMessageHandler.sol";
 
 import {IRecoverable} from "../../misc/interfaces/IRecoverable.sol";
@@ -75,6 +77,9 @@ interface IGateway is IMessageHandler, IRecoverable {
 
     /// @notice Dispatched when an account is not valid to withdraw subsidized pool funds
     error CannotWithdraw();
+
+    function adapter() external view returns (IAdapter);
+    function gasService() external view returns (IGasService);
 
     /// @notice Used to update an address ( state variable ) on very rare occasions.
     /// @dev    Currently used to update addresses of contract instances.
