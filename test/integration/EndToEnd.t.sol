@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {VMLabeling} from "./utils/VMLabeling.sol";
 import {LocalAdapter} from "./adapters/LocalAdapter.sol";
+import {MessageBenchmarker} from "./utils/MessageBenchmarker.sol";
 import {IntegrationConstants} from "./utils/IntegrationConstants.sol";
 
 import {ERC20} from "../../src/misc/ERC20.sol";
@@ -264,7 +265,21 @@ contract EndToEndDeployment is Test {
         adapter = new LocalAdapter(localCentrifugeId, deploy.multiAdapter(), address(deploy));
         _setAdapter(deploy, remoteCentrifugeId, adapter);
 
+        // Only run the benchmarks if using one thread to avoid concurrence issues writing the json
+        // Example of command: RAYON_NUM_THREADS=1 BENCHMARKING_RUN_ID="$(date +%s)" forge test EndToEnd
+        if (vm.envOr("RAYON_NUM_THREADS", uint256(0)) == 1) {
+            _attachBenchmark(deploy, batcher);
+        }
+
         deploy.removeFullDeployerAccess(batcher);
+    }
+
+    function _attachBenchmark(FullDeployer deploy, FullActionBatcher batcher) internal {
+        vm.startPrank(address(batcher));
+        MessageBenchmarker benchmarker = new MessageBenchmarker(deploy.gateway());
+        deploy.gateway().rely(address(benchmarker));
+        deploy.multiAdapter().file("gateway", address(benchmarker));
+        vm.stopPrank();
     }
 
     function _setSpoke(FullDeployer deploy, uint16 centrifugeId, CSpoke storage s_) internal {
@@ -1009,8 +1024,8 @@ contract EndToEndUseCases is EndToEndFlows, VMLabeling {
         h.hub.notifySharePrice(POOL_A, SC_1, s.centrifugeId);
         h.hub.setSnapshotHook(POOL_A, h.snapshotHook);
 
-        // Each message will return half of the gas wasted
-        adapterBToA.setRefundedValue(h.gasService.updateShares() / 2);
+        uint128 refunded = h.gasService.updateShares() - 100;
+        adapterBToA.setRefundedValue(refunded);
 
         // We just subsidize for two message
         vm.startPrank(ANY);
@@ -1020,17 +1035,17 @@ contract EndToEndUseCases is EndToEndFlows, VMLabeling {
 
         vm.startPrank(BSM);
         s.balanceSheet.submitQueuedShares(POOL_A, SC_1, EXTRA_GAS);
-        assertEq(address(s.balanceSheet.escrow(POOL_A)).balance, h.gasService.updateShares() / 2);
+        assertEq(address(s.balanceSheet.escrow(POOL_A)).balance, refunded);
         assertEq(address(s.gateway).balance, DEFAULT_SUBSIDY + h.gasService.updateShares());
 
         s.balanceSheet.submitQueuedShares(POOL_A, SC_1, EXTRA_GAS);
-        assertEq(address(s.balanceSheet.escrow(POOL_A)).balance, h.gasService.updateShares());
+        assertEq(address(s.balanceSheet.escrow(POOL_A)).balance, refunded * 2);
         assertEq(address(s.gateway).balance, DEFAULT_SUBSIDY);
 
         // This message is fully paid with refunded amount
         s.balanceSheet.submitQueuedShares(POOL_A, SC_1, EXTRA_GAS);
-        assertEq(address(s.balanceSheet.escrow(POOL_A)).balance, h.gasService.updateShares() / 2);
-        assertEq(address(s.gateway).balance, DEFAULT_SUBSIDY);
+        assertEq(address(s.balanceSheet.escrow(POOL_A)).balance, refunded);
+        assertEq(address(s.gateway).balance, DEFAULT_SUBSIDY + refunded * 2 - h.gasService.updateShares());
 
         assertEq(h.snapshotHook.synced(POOL_A, SC_1, s.centrifugeId), 3, "3 UpdateShares messages received");
     }
