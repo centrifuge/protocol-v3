@@ -129,7 +129,7 @@ contract ThreeChainEndToEndDeployment is EndToEndFlows {
         sB.spoke
         .crosschainTransferShares{
             value: GAS
-        }(sC.centrifugeId, POOL_A, SC_1, INVESTOR_A.toBytes32(), amount, HOOK_GAS, HOOK_GAS);
+        }(sC.centrifugeId, POOL_A, SC_1, INVESTOR_A.toBytes32(), amount, HOOK_GAS, HOOK_GAS, INVESTOR_A);
         assertEq(shareTokenB.balanceOf(INVESTOR_A), 0, "Shares should be burned on chain B");
         assertEq(
             h.snapshotHook.transfers(POOL_A, SC_1, sB.centrifugeId, sC.centrifugeId), amount, "Snapshot hook not called"
@@ -142,6 +142,7 @@ contract ThreeChainEndToEndDeployment is EndToEndFlows {
         if (direction == CrossChainDirection.WithIntermediaryHub) {
             assertEq(shareTokenC.balanceOf(INVESTOR_A), 0, "Share transfer not executed due to unpaid message");
 
+            vm.prank(ANY);
             vm.expectEmit();
             emit ISpoke.ExecuteTransferShares(POOL_A, SC_1, INVESTOR_A, amount);
             h.gateway.repay{value: GAS}(sC.centrifugeId, _getLastUnpaidMessage());
