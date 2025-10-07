@@ -16,6 +16,7 @@ import {Auth} from "../../misc/Auth.sol";
 import {d18, D18} from "../../misc/types/D18.sol";
 import {Recoverable} from "../../misc/Recoverable.sol";
 import {MathLib} from "../../misc/libraries/MathLib.sol";
+import {BytesLib} from "../../misc/libraries/BytesLib.sol";
 
 import {IAdapter} from "../messaging/interfaces/IAdapter.sol";
 import {IGateway} from "../messaging/interfaces/IGateway.sol";
@@ -23,8 +24,6 @@ import {IMultiAdapter} from "../messaging/interfaces/IMultiAdapter.sol";
 import {IHubMessageSender} from "../messaging/interfaces/IGatewaySenders.sol";
 
 import {ICreatePool} from "../../admin/interfaces/ICreatePool.sol";
-
-import {RequestCallbackMessageLib} from "../../vaults/libraries/RequestCallbackMessageLib.sol";
 
 import {PoolId} from "../types/PoolId.sol";
 import {AssetId} from "../types/AssetId.sol";
@@ -37,7 +36,7 @@ import {BatchedMulticall} from "../utils/BatchedMulticall.sol";
 ///         Pools can assign hub managers which have full rights over all actions.
 contract Hub is BatchedMulticall, Auth, Recoverable, IHub, IHubRequestManagerCallback, ICreatePool {
     using MathLib for uint256;
-    using RequestCallbackMessageLib for *;
+    using BytesLib for *;
 
     IFeeHook public feeHook;
     IHoldings public holdings;
@@ -501,6 +500,14 @@ contract Hub is BatchedMulticall, Auth, Recoverable, IHub, IHubRequestManagerCal
         require(msg.sender == address(manager), NotAuthorized());
 
         sender.sendRequestCallback{value: _payment()}(poolId, scId, assetId, payload, extraGasLimit, refund);
+    }
+
+    /// @inheritdoc IHub
+    function callRequestManager(PoolId poolId, uint16 centrifugeId, bytes calldata data) external payable {
+        _isManager(poolId);
+        require(poolId == PoolId.wrap(data.toUint256(4).toUint64()), NotManager());
+
+        hubRegistry.hubRequestManager(poolId, centrifugeId).callFromHub(poolId, data);
     }
 
     //----------------------------------------------------------------------------------------------

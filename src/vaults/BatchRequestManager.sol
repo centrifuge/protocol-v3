@@ -140,6 +140,33 @@ contract BatchRequestManager is Auth, ReentrancyProtection, IBatchRequestManager
         }
     }
 
+    /// @inheritdoc IHubRequestManager
+    function callFromHub(PoolId, bytes calldata data) external auth {
+        bytes4 selector = data.toBytes4(0);
+
+        // forgefmt: disable-next-item
+        require(
+            selector == this.approveDeposits.selector ||
+            selector == this.approveRedeems.selector ||
+            selector == this.issueShares.selector ||
+            selector == this.revokeShares.selector ||
+            selector == this.forceCancelDepositRequest.selector ||
+            selector == this.forceCancelRedeemRequest.selector,
+            InvalidMethodCalledFromHub()
+        );
+
+        (bool success, bytes memory returnData) = address(this).delegatecall(data);
+
+        if (!success) {
+            uint256 length = returnData.length;
+            require(length != 0, CallFailedWithEmptyRevert());
+
+            assembly ("memory-safe") {
+                revert(add(32, returnData), length)
+            }
+        }
+    }
+
     /// @inheritdoc IBatchRequestManager
     function requestDeposit(PoolId poolId, ShareClassId scId_, uint128 amount, bytes32 investor, AssetId depositAssetId)
         public
