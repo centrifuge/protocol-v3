@@ -10,11 +10,12 @@ import {console2} from "forge-std/console2.sol";
 import {ERC20} from "src/misc/ERC20.sol";
 import {AsyncVault} from "src/vaults/AsyncVault.sol";
 import {CastLib} from "src/misc/libraries/CastLib.sol";
-import {MessageLib} from "src/common/libraries/MessageLib.sol";
+import {MessageLib} from "src/core/messaging/libraries/MessageLib.sol";
 import {UpdateRestrictionMessageLib} from "src/hooks/libraries/UpdateRestrictionMessageLib.sol";
-import {ShareClassId} from "src/common/types/ShareClassId.sol";
-import {PoolId} from "src/common/types/PoolId.sol";
-import {AssetId} from "src/common/types/AssetId.sol";
+import {ShareClassId} from "src/core/types/ShareClassId.sol";
+import {PoolId} from "src/core/types/PoolId.sol";
+import {AssetId} from "src/core/types/AssetId.sol";
+import {D18} from "src/misc/types/D18.sol";
 import {IBaseVault} from "src/vaults/interfaces/IBaseVault.sol";
 
 import {Properties} from "../properties/Properties.sol";
@@ -72,7 +73,8 @@ abstract contract SpokeTargets is BaseTargetFunctions, Properties {
         .registerAsset{value: 0.1 ether}(
             DEFAULT_DESTINATION_CHAIN,
             assetAddress,
-            erc6909TokenId
+            erc6909TokenId,
+            address(this) // refund address
         ).raw();
 
         // Only if successful
@@ -137,7 +139,7 @@ abstract contract SpokeTargets is BaseTargetFunctions, Properties {
         address vault;
         if (isAsync) {
             vault = address(
-                spoke.deployVault(
+                vaultRegistry.deployVault(
                     _getPool(),
                     _getShareClassId(),
                     _getAssetId(),
@@ -146,7 +148,7 @@ abstract contract SpokeTargets is BaseTargetFunctions, Properties {
             );
         } else {
             vault = address(
-                spoke.deployVault(
+                vaultRegistry.deployVault(
                     _getPool(),
                     _getShareClassId(),
                     _getAssetId(),
@@ -170,10 +172,8 @@ abstract contract SpokeTargets is BaseTargetFunctions, Properties {
     ) public updateGhosts asAdmin {
         IBaseVault vaultInstance = IBaseVault(vault);
         PoolId poolId = vaultInstance.poolId();
-        ShareClassId scId = vaultInstance.scId();
-        AssetId assetId = _getAssetId();
 
-        spoke.setRequestManager(poolId, scId, assetId, asyncRequestManager);
+        spoke.setRequestManager(poolId, asyncRequestManager);
     }
 
     // Step 6- link the vault
@@ -186,7 +186,7 @@ abstract contract SpokeTargets is BaseTargetFunctions, Properties {
         // Track authorization - linkVault requires admin auth
         _trackAuthorization(_getActor(), poolId);
 
-        spoke.linkVault(poolId, scId, assetId, IBaseVault(vault));
+        vaultRegistry.linkVault(poolId, scId, assetId, IBaseVault(vault));
     }
 
     function spoke_linkVault_clamped() public {
@@ -195,7 +195,7 @@ abstract contract SpokeTargets is BaseTargetFunctions, Properties {
 
     // Extra 7 - remove the vault
     function spoke_unlinkVault() public updateGhosts asAdmin {
-        spoke.unlinkVault(
+        vaultRegistry.unlinkVault(
             _getPool(),
             _getShareClassId(),
             _getAssetId(),
@@ -220,11 +220,13 @@ abstract contract SpokeTargets is BaseTargetFunctions, Properties {
     }
 
     // NOTE: in e2e tests, these get called as callbacks in notifyAssetPrice and notifySharePrice
-    // function spoke_updatePricePoolPerShare(uint64 price, uint64 computedAt) public updateGhostsWithType(OpType.ADMIN)
-    // asAdmin {
-    //     spoke.updatePricePoolPerShare(poolId, scId, price, computedAt);
-    //     spoke.updatePricePoolPerAsset(poolId, scId, assetId, price, computedAt);
-    // }
+    function spoke_updatePricePoolPerShare(uint128 price, uint64 computedAt) public updateGhostsWithType(OpType.ADMIN) asAdmin {
+        PoolId poolId = _getPool();
+        ShareClassId scId = _getShareClassId();
+        AssetId assetId = _getAssetId();
+        spoke.updatePricePoolPerShare(poolId, scId, D18.wrap(price), computedAt);
+        spoke.updatePricePoolPerAsset(poolId, scId, assetId, D18.wrap(price), computedAt);
+    }
 
     function spoke_updateShareMetadata(
         string memory tokenName,
